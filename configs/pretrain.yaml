@@ -1,0 +1,10 @@
+# Shared pretraining configuration. Keep data and artifact locations external.
+seed: 42
+dataset_version: "change-me"
+sequence:
+  max_length: 128
+  time_gap_features: true
+training:
+  batch_size: 32
+  epochs: 10
+  learning_rate: 0.0001
