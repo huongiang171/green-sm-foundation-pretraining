@@ -1,0 +1,7 @@
+# Shared downstream evaluation configuration.
+seed: 42
+task: "next_destination_ranking"
+split: "temporal"
+metrics:
+  - recall_at_10
+  - ndcg_at_10
