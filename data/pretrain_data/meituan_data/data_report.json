@@ -1,0 +1,13 @@
+{
+  "dataset_name": "Meituan TRD OmniBehavior v2 Pretrain Dataset",
+  "generated_at_utc": "2026-10-09T19:30:11.576832+00:00",
+  "total_users": 20000,
+  "total_events": 563366,
+  "total_snapshots": 20000,
+  "total_event_bytes": 195377591,
+  "total_snapshot_bytes": 103650298,
+  "avg_events_per_user": 28.1683,
+  "min_events_per_user": 3,
+  "max_events_per_user": 1381,
+  "p50_events_per_user": 13.0
+}

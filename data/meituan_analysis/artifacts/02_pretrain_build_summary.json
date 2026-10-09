@@ -1,0 +1,8 @@
+{
+  "total_users_processed": 20000,
+  "total_events_written": 563366,
+  "total_snapshots_written": 20000,
+  "elapsed_seconds": 64.4216799736023,
+  "events_dir": "d:\\Meituan\\pretrain_data\\meituan_data\\events",
+  "snapshots_dir": "d:\\Meituan\\pretrain_data\\meituan_data\\snapshots"
+}

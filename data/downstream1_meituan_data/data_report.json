@@ -1,0 +1,21 @@
+{
+  "dataset_name": "Meituan TRD Downstream Ranking Dataset",
+  "users_count": 10000,
+  "total_train_rows": 95133,
+  "total_test_rows": 75534,
+  "total_rows": 170667,
+  "positive_ordered_count": 21628,
+  "positive_clicked_count": 62527,
+  "negative_samples_count": 86512,
+  "train_dts": [
+    "20210322",
+    "20210323",
+    "20210324",
+    "20210325"
+  ],
+  "test_dts": [
+    "20210326",
+    "20210327",
+    "20210328"
+  ]
+}
