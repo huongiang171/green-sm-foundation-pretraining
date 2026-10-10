@@ -4,7 +4,10 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from datetime import datetime
-from typing import Any
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    import torch
 
 SPECIAL_TOKEN_IDS: dict[str, int] = {
     "PAD": 0,
@@ -49,6 +52,7 @@ class EncodedSample:
     user_id: str
     records: tuple[TokenRecord, ...]
     user_id_value_id: int | None = None
+    next_action_records: tuple[TokenRecord, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -86,18 +90,20 @@ class CanonicalSample:
     history_group_truncated: bool
     profile: dict[str, Any]
     events: tuple[EventRecord, ...]
+    history_start: int = 0
+    history_stop: int = 0
 
 
 @dataclass
 class FoundationBatch:
     """Tensor contract consumed by the shared foundation encoder."""
 
-    input_ids: Any
-    key_ids: Any
-    modality_ids: Any
-    source_ids: Any
-    position_ids: Any
-    time_gap_ids: Any
-    attention_mask: Any
-    user_ids: Any
-    targets: dict[str, Any]
+    input_ids: torch.LongTensor
+    key_ids: torch.LongTensor
+    modality_ids: torch.LongTensor
+    source_ids: torch.LongTensor
+    position_ids: torch.LongTensor
+    time_gap_ids: torch.LongTensor
+    attention_mask: torch.BoolTensor
+    user_ids: torch.LongTensor
+    targets: dict[str, torch.Tensor]

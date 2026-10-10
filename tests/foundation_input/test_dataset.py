@@ -5,6 +5,7 @@ import numpy as np
 from src.foundation_input.dataset import (
     DatasetConfig,
     FoundationPretrainDataset,
+    _truncate_records,
     foundation_collate,
 )
 from src.foundation_input.loader import iter_normalized_samples
@@ -108,3 +109,50 @@ def test_foundation_dataset_streams_encoded_samples(tmp_path) -> None:
     encoded = dataset[0]
     assert encoded.sample_id == canonical.sample_id
     assert encoded.records
+
+
+def test_next_action_target_is_excluded_from_input() -> None:
+    first = _record(21, source="sequence", group="e1", position=1)
+    second = _record(22, source="sequence", group="e2", position=2)
+    sample = EncodedSample(
+        sample_id="s1",
+        dataset_name="omnibehavior_v2",
+        user_id="u1",
+        records=(first, second),
+        next_action_records=(second,),
+    )
+
+    batch = foundation_collate([sample], tensor_backend=FakeTensorBackend())
+
+    assert batch.input_ids[0].tolist() == [1, 2, 21]
+    assert batch.targets["event_group_ids"][0].tolist() == [0, 0, 1]
+    assert batch.targets["next_action_group_ids"].tolist() == [2]
+    assert batch.targets["next_action_type_ids"].tolist() == [22]
+
+
+def test_foundation_dataset_does_not_keep_unbounded_sample_cache(tmp_path) -> None:
+    _write_dataset(tmp_path)
+    canonical = next(iter_normalized_samples(tmp_path, split="train", validate=True))
+    artifacts = fit_vocabulary(
+        semantic_tokens(canonical, TokenizerConfig()),
+        VocabularyConfig(dataset_name=canonical.dataset_name),
+    )
+    dataset = FoundationPretrainDataset(str(tmp_path), "train", artifacts)
+
+    list(dataset)
+
+    assert not hasattr(dataset, "_cache")
+
+
+def test_max_tokens_reserves_cls_and_sep() -> None:
+    sample = EncodedSample(
+        sample_id="s1",
+        dataset_name="omnibehavior_v2",
+        user_id="u1",
+        records=(
+            _record(11, source="tabular", group=None, position=0),
+            _record(21, source="sequence", group="e1", position=1),
+        ),
+    )
+    retained = _truncate_records(list(sample.records), DatasetConfig(max_tokens=4))
+    assert [record.value_id for record in retained] == [11, 21]

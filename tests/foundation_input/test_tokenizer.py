@@ -81,3 +81,24 @@ def test_interval_values_remain_categorical_strings() -> None:
     interval = [token for token in tokens if token.key == "action.order_price_interval"]
     assert interval[0].value == "[29,36)"
     assert interval[0].modality == "categorical"
+
+
+def test_unknown_history_order_does_not_create_factual_positions_or_gaps() -> None:
+    first = _event()
+    second = _event(
+        event_id="user-001:1:0",
+        source_record_id="user-001:1",
+        source_record_index=1,
+        event_time=datetime(2025, 9, 19, 1, tzinfo=timezone.utc),
+        eligibility_time=datetime(2025, 9, 19, 1, tzinfo=timezone.utc),
+    )
+    sample = _sample({}, (first, second))
+    sample = CanonicalSample(**{**sample.__dict__, "history_order_known": False})
+    semantic = semantic_tokens(sample, TokenizerConfig())
+    artifacts = fit_vocabulary(semantic, VocabularyConfig(dataset_name=sample.dataset_name))
+
+    records = tokenize_sample(sample, artifacts, TokenizerConfig())
+
+    sequence = [record for record in records if record.token.source == "sequence"]
+    assert {record.position_id for record in sequence} == {0}
+    assert {record.time_gap_id for record in sequence} == {0}

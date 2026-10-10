@@ -8,6 +8,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+import pyarrow as pa
 import pyarrow.parquet as pq
 
 SCHEMA_VERSION = "omnibehavior_pretraining_v2"
@@ -38,6 +39,8 @@ SNAPSHOT_COLUMNS = frozenset(
         "cutoff_time",
         "cutoff_inclusive",
         "split",
+        "history_start",
+        "history_stop",
         "history_event_ids",
         "history_order_known",
         "history_truncated",
@@ -85,6 +88,12 @@ def _sha256(path: Path) -> str:
     return digest.hexdigest()
 
 
+def verify_file_checksum(path: str | Path, expected: str) -> None:
+    actual = _sha256(Path(path))
+    if actual != expected:
+        raise ManifestError(f"Checksum mismatch for {path}: expected {expected}, got {actual}")
+
+
 def _safe_path(root: Path, relative: str, *, field: str) -> Path:
     if not isinstance(relative, str) or not relative:
         raise ManifestError(f"manifest.{field} must be a non-empty relative path")
@@ -107,7 +116,10 @@ def _read_json(path: Path, label: str) -> dict[str, Any]:
 
 
 def load_manifest(
-    dataset_root: str | Path, *, validate_shard_files: bool = True
+    dataset_root: str | Path,
+    *,
+    validate_shard_files: bool = True,
+    verify_checksums: bool = False,
 ) -> DatasetManifest:
     root = Path(dataset_root).resolve()
     if not root.is_dir():
@@ -149,13 +161,21 @@ def load_manifest(
             path = _safe_path(root, shard[field], field=f"shards[{index}].{field}")
             if validate_shard_files and not path.is_file():
                 raise ManifestError(f"Missing shard file: {path}")
+            if verify_checksums:
+                checksum_field = "events_sha256" if field == "events_file" else "snapshots_sha256"
+                expected = shard.get(checksum_field)
+                if not isinstance(expected, str):
+                    raise ManifestError(f"manifest.shards[{index}].{checksum_field} is required")
+                verify_file_checksum(path, expected)
         if not isinstance(shard["snapshots_by_split"], dict):
             raise ManifestError(f"manifest.shards[{index}].snapshots_by_split must be an object")
 
     return DatasetManifest(root=root, data=manifest, config=config)
 
 
-def validate_parquet_schema(path: str | Path, *, kind: str) -> None:
+def validate_parquet_schema(
+    path: str | Path, *, kind: str, strict_types: bool = False
+) -> None:
     """Validate required columns without imposing source-specific value semantics."""
 
     required = {"events": EVENT_COLUMNS, "snapshots": SNAPSHOT_COLUMNS}.get(kind)
@@ -165,7 +185,8 @@ def validate_parquet_schema(path: str | Path, *, kind: str) -> None:
     if not parquet_path.is_file():
         raise ManifestError(f"Missing {kind} Parquet file: {parquet_path}")
     try:
-        columns = set(pq.ParquetFile(parquet_path).schema_arrow.names)
+        schema = pq.ParquetFile(parquet_path).schema_arrow
+        columns = set(schema.names)
     except Exception as error:  # pyarrow exposes several concrete read errors
         raise ManifestError(f"Cannot read {kind} Parquet file {parquet_path}: {error}") from error
     missing = sorted(required - columns)
@@ -173,3 +194,31 @@ def validate_parquet_schema(path: str | Path, *, kind: str) -> None:
         raise ManifestError(
             f"{kind} Parquet schema missing required columns {missing}: {parquet_path}"
         )
+    if not strict_types:
+        return
+    string_columns = {
+        "event_id", "user_id", "source_record_id", "time_precision", "scenario", "event_type",
+        "context_json", "action_json", "sample_id", "split", "profile_json",
+    }
+    integer_columns = {"source_record_index", "action_index", "source_action_count", "history_start", "history_stop"}
+    boolean_columns = {"eligibility_inclusive", "cutoff_inclusive", "history_order_known", "history_truncated", "history_group_truncated"}
+    timestamp_columns = {"event_time", "eligibility_time", "cutoff_time"}
+    for name in schema.names:
+        field_type = schema.field(name).type
+        expected = None
+        if name in string_columns:
+            expected = pa.types.is_string(field_type) or pa.types.is_large_string(field_type)
+        elif name in integer_columns:
+            expected = pa.types.is_integer(field_type)
+        elif name in boolean_columns:
+            expected = pa.types.is_boolean(field_type)
+        elif name in timestamp_columns:
+            expected = pa.types.is_timestamp(field_type)
+            if name == "event_time":
+                expected = expected or pa.types.is_string(field_type) or pa.types.is_large_string(field_type)
+        elif name == "history_event_ids":
+            expected = pa.types.is_list(field_type) or pa.types.is_large_list(field_type)
+        if expected is False:
+            raise ManifestError(
+                f"{kind} Parquet column {name!r} has incompatible type {field_type}: {parquet_path}"
+            )
