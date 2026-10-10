@@ -1,0 +1,357 @@
+{
+  "users.txt": {
+    "filename": "users.txt",
+    "total_data_rows": 200000,
+    "inconsistent_lines": 0,
+    "num_columns": 4,
+    "columns": [
+      "user_id",
+      "avg_pay_amt",
+      "avg_pay_amt_weekdays",
+      "avg_pay_amt_weekends"
+    ],
+    "null_counts": {},
+    "weizhi_counts": {
+      "avg_pay_amt_weekdays": 16050,
+      "avg_pay_amt_weekends": 2646
+    },
+    "sample_rows": [
+      {
+        "user_id": "0",
+        "avg_pay_amt": "[36,49)",
+        "avg_pay_amt_weekdays": "[29,36)",
+        "avg_pay_amt_weekends": "[36,49)"
+      },
+      {
+        "user_id": "1",
+        "avg_pay_amt": "[49,65)",
+        "avg_pay_amt_weekdays": "[49,65)",
+        "avg_pay_amt_weekends": ">=65"
+      },
+      {
+        "user_id": "2",
+        "avg_pay_amt": "<29",
+        "avg_pay_amt_weekdays": "<29",
+        "avg_pay_amt_weekends": "<29"
+      }
+    ]
+  },
+  "pois.txt": {
+    "filename": "pois.txt",
+    "total_data_rows": 29072,
+    "inconsistent_lines": 0,
+    "num_columns": 10,
+    "columns": [
+      "wm_poi_id",
+      "wm_poi_name",
+      "primary_second_tag_name",
+      "primary_third_tag_name",
+      "primary_first_tag_name",
+      "poi_brand_id",
+      "aor_id",
+      "poi_score",
+      "delivery_comment_avg_score",
+      "food_comment_avg_score"
+    ],
+    "null_counts": {
+      "wm_poi_id": 1,
+      "wm_poi_name": 1416,
+      "primary_second_tag_name": 1416,
+      "primary_third_tag_name": 1416,
+      "primary_first_tag_name": 1416,
+      "poi_brand_id": 7035,
+      "aor_id": 24076,
+      "poi_score": 1996,
+      "delivery_comment_avg_score": 1996,
+      "food_comment_avg_score": 1996
+    },
+    "weizhi_counts": {
+      "primary_second_tag_name": 5,
+      "primary_third_tag_name": 7641,
+      "primary_first_tag_name": 5
+    },
+    "sample_rows": [
+      {
+        "wm_poi_id": "0",
+        "wm_poi_name": "302658-52727-042150-121306-b3244-8f2156-713861-433290-ec2719-f1890-9c3489-9b2653-dc3924-431608-272349",
+        "primary_second_tag_name": "0",
+        "primary_third_tag_name": "0",
+        "primary_first_tag_name": "0",
+        "poi_brand_id": "0",
+        "aor_id": "0",
+        "poi_score": "4.66",
+        "delivery_comment_avg_score": "4.87",
+        "food_comment_avg_score": "4.61"
+      },
+      {
+        "wm_poi_id": "1",
+        "wm_poi_name": "253623-653615-4c2815-121306-0d1431-063761-431608-272349",
+        "primary_second_tag_name": "0",
+        "primary_third_tag_name": "0",
+        "primary_first_tag_name": "0",
+        "poi_brand_id": "1",
+        "aor_id": "5",
+        "poi_score": "4.79",
+        "delivery_comment_avg_score": "4.97",
+        "food_comment_avg_score": "4.82"
+      },
+      {
+        "wm_poi_id": "2",
+        "wm_poi_name": "604088-273896-e01010-1f2314-604088-082380-233398-33816-121306-353998-67198-063761-431608-272349",
+        "primary_second_tag_name": "0",
+        "primary_third_tag_name": "1",
+        "primary_first_tag_name": "0",
+        "poi_brand_id": "2",
+        "aor_id": "3",
+        "poi_score": "4.72",
+        "delivery_comment_avg_score": "4.9",
+        "food_comment_avg_score": "4.76"
+      }
+    ]
+  },
+  "spus.txt": {
+    "filename": "spus.txt",
+    "total_data_rows": 179778,
+    "inconsistent_lines": 0,
+    "num_columns": 8,
+    "columns": [
+      "wm_food_spu_id",
+      "wm_food_spu_name",
+      "price",
+      "category",
+      "ingredients",
+      "taste",
+      "stand_food_id",
+      "stand_food_name"
+    ],
+    "null_counts": {
+      "wm_food_spu_name": 4912,
+      "price": 13,
+      "category": 13832,
+      "ingredients": 74826,
+      "taste": 120243,
+      "stand_food_id": 86246,
+      "stand_food_name": 86265
+    },
+    "weizhi_counts": {},
+    "sample_rows": [
+      {
+        "wm_food_spu_id": "0",
+        "wm_food_spu_name": "a22084-de2424-11949-361622-893740-5f1782-b43550-f91501-f81893-193506",
+        "price": "32.0",
+        "category": "[0]",
+        "ingredients": "NULL",
+        "taste": "NULL",
+        "stand_food_id": "NULL",
+        "stand_food_name": "NULL"
+      },
+      {
+        "wm_food_spu_id": "1",
+        "wm_food_spu_name": "a51005-4a2318",
+        "price": "8.0",
+        "category": "[1]",
+        "ingredients": "[0]",
+        "taste": "[0]",
+        "stand_food_id": "0",
+        "stand_food_name": "a51005-4a2318"
+      },
+      {
+        "wm_food_spu_id": "2",
+        "wm_food_spu_name": "4a3834-c6828-121306-0a2002-66812-cd3847-d72063-272349",
+        "price": "8.0",
+        "category": "[2]",
+        "ingredients": "NULL",
+        "taste": "NULL",
+        "stand_food_id": "NULL",
+        "stand_food_name": "NULL"
+      }
+    ]
+  },
+  "orders_train.txt": {
+    "filename": "orders_train.txt",
+    "total_data_rows": 1068495,
+    "inconsistent_lines": 0,
+    "num_columns": 11,
+    "columns": [
+      "user_id",
+      "wm_order_id",
+      "wm_poi_id",
+      "aor_id",
+      "order_price_interval",
+      "order_timestamp",
+      "ord_period_name",
+      "order_scene_name",
+      "aoi_id",
+      "takedlvr_aoi_type_name",
+      "dt"
+    ],
+    "null_counts": {
+      "aoi_id": 60870
+    },
+    "weizhi_counts": {
+      "order_scene_name": 74008,
+      "takedlvr_aoi_type_name": 63511
+    },
+    "sample_rows": [
+      {
+        "user_id": "120037",
+        "wm_order_id": "0",
+        "wm_poi_id": "1806",
+        "aor_id": "0",
+        "order_price_interval": "<29",
+        "order_timestamp": "1614557985",
+        "ord_period_name": "0",
+        "order_scene_name": "未知",
+        "aoi_id": "0",
+        "takedlvr_aoi_type_name": "0",
+        "dt": "20210301"
+      },
+      {
+        "user_id": "135109",
+        "wm_order_id": "1",
+        "wm_poi_id": "970",
+        "aor_id": "6",
+        "order_price_interval": ">=65",
+        "order_timestamp": "1614561844",
+        "ord_period_name": "1",
+        "order_scene_name": "0",
+        "aoi_id": "NULL",
+        "takedlvr_aoi_type_name": "未知",
+        "dt": "20210301"
+      },
+      {
+        "user_id": "146736",
+        "wm_order_id": "2",
+        "wm_poi_id": "1945",
+        "aor_id": "6",
+        "order_price_interval": "[29,36)",
+        "order_timestamp": "1614588773",
+        "ord_period_name": "2",
+        "order_scene_name": "未知",
+        "aoi_id": "1",
+        "takedlvr_aoi_type_name": "0",
+        "dt": "20210301"
+      }
+    ]
+  },
+  "orders_poi_session.txt": {
+    "filename": "orders_poi_session.txt",
+    "total_data_rows": 1299045,
+    "inconsistent_lines": 0,
+    "num_columns": 3,
+    "columns": [
+      "wm_order_id",
+      "clicks",
+      "dt"
+    ],
+    "null_counts": {
+      "clicks": 685502
+    },
+    "weizhi_counts": {},
+    "sample_rows": [
+      {
+        "wm_order_id": "21559",
+        "clicks": "1782#535#1002#26705#26705#975",
+        "dt": "20210301"
+      },
+      {
+        "wm_order_id": "536",
+        "clicks": "18845#18845#18845#13754#13715#13715#13715#13754#13754#13754#13754#13754#13754#13754#13754#13754#13754#13754#2900",
+        "dt": "20210301"
+      },
+      {
+        "wm_order_id": "16174",
+        "clicks": "NULL",
+        "dt": "20210301"
+      }
+    ]
+  },
+  "orders_test_poi.txt": {
+    "filename": "orders_test_poi.txt",
+    "total_data_rows": 230550,
+    "inconsistent_lines": 0,
+    "num_columns": 8,
+    "columns": [
+      "user_id",
+      "wm_order_id",
+      "aor_id",
+      "order_timestamp",
+      "ord_period_name",
+      "aoi_id",
+      "takedlvr_aoi_type_name",
+      "dt"
+    ],
+    "null_counts": {
+      "aoi_id": 11354
+    },
+    "weizhi_counts": {
+      "takedlvr_aoi_type_name": 11951
+    },
+    "sample_rows": [
+      {
+        "user_id": "140760",
+        "wm_order_id": "1068495",
+        "aor_id": "6",
+        "order_timestamp": "1616379321",
+        "ord_period_name": "1",
+        "aoi_id": "169",
+        "takedlvr_aoi_type_name": "1",
+        "dt": "20210322"
+      },
+      {
+        "user_id": "86307",
+        "wm_order_id": "1068496",
+        "aor_id": "6",
+        "order_timestamp": "1616399237",
+        "ord_period_name": "2",
+        "aoi_id": "123",
+        "takedlvr_aoi_type_name": "1",
+        "dt": "20210322"
+      },
+      {
+        "user_id": "183993",
+        "wm_order_id": "1068497",
+        "aor_id": "6",
+        "order_timestamp": "1616386275",
+        "ord_period_name": "1",
+        "aoi_id": "148",
+        "takedlvr_aoi_type_name": "1",
+        "dt": "20210322"
+      }
+    ]
+  },
+  "orders_poi_test_label.txt": {
+    "filename": "orders_poi_test_label.txt",
+    "total_data_rows": 230550,
+    "inconsistent_lines": 0,
+    "num_columns": 4,
+    "columns": [
+      "user_id",
+      "wm_order_id",
+      "wm_poi_id",
+      "dt"
+    ],
+    "null_counts": {},
+    "weizhi_counts": {},
+    "sample_rows": [
+      {
+        "user_id": "140760",
+        "wm_order_id": "1068495",
+        "wm_poi_id": "2198",
+        "dt": "20210322"
+      },
+      {
+        "user_id": "86307",
+        "wm_order_id": "1068496",
+        "wm_poi_id": "3193",
+        "dt": "20210322"
+      },
+      {
+        "user_id": "183993",
+        "wm_order_id": "1068497",
+        "wm_poi_id": "1171",
+        "dt": "20210322"
+      }
+    ]
+  }
+}

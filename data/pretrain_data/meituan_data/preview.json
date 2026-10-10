@@ -1,0 +1,2938 @@
+[
+  {
+    "sample_id": "0:2021-03-21T23:59:59:closed",
+    "input": {
+      "user_id": "0",
+      "cutoff_time": "2021-03-21T23:59:59",
+      "cutoff_inclusive": true,
+      "timezone": null,
+      "history_order_known": true,
+      "history_truncated": false,
+      "history_group_truncated": false,
+      "profile": {
+        "as_of_time": "2021-03-21T23:59:59",
+        "active_days_30d": 2,
+        "event_count_30d": 23,
+        "e_commerce_event_count_30d": 23,
+        "video_browsing_event_count_30d": 0,
+        "live_streaming_event_count_30d": 0,
+        "advertisement_event_count_30d": 0,
+        "search_behavior_event_count_30d": 0,
+        "customer_service_event_count_30d": 0
+      },
+      "history": [
+        {
+          "event_id": "0:0:0",
+          "source_record_id": "0:0",
+          "action_index": 0,
+          "event_time": "2021-03-17T16:38:52",
+          "time_precision": "second",
+          "scenario": "E-commerce",
+          "event_type": "click",
+          "context": {
+            "product_source": "meituan_takeout",
+            "product_id": "3051",
+            "item_title": "082380-8a2234-c62143-082380-233398-123785-093715-121306-a93922-dd497-d0128-431608-272349",
+            "item_desc": "",
+            "item_price": 20.0,
+            "external_item_title": "",
+            "category_level1_name": "0",
+            "category_level2_name": "1",
+            "category_level3_name": "78",
+            "industry_level1_name": "Food Delivery",
+            "industry_level2_name": "0",
+            "industry_level3_name": "1"
+          },
+          "action": {
+            "type": "click",
+            "click_cnt": 1
+          }
+        },
+        {
+          "event_id": "0:0:1",
+          "source_record_id": "0:0",
+          "action_index": 1,
+          "event_time": "2021-03-17T16:39:22",
+          "time_precision": "second",
+          "scenario": "E-commerce",
+          "event_type": "click",
+          "context": {
+            "product_source": "meituan_takeout",
+            "product_id": "3237",
+            "item_title": "87965-863895-323291-791987-082380-233398-323291-021794-791987-121306-402923-84752-431608-272349",
+            "item_desc": "",
+            "item_price": 20.0,
+            "external_item_title": "",
+            "category_level1_name": "0",
+            "category_level2_name": "1",
+            "category_level3_name": "3",
+            "industry_level1_name": "Food Delivery",
+            "industry_level2_name": "0",
+            "industry_level3_name": "1"
+          },
+          "action": {
+            "type": "click",
+            "click_cnt": 1
+          }
+        },
+        {
+          "event_id": "0:0:2",
+          "source_record_id": "0:0",
+          "action_index": 2,
+          "event_time": "2021-03-17T16:39:52",
+          "time_precision": "second",
+          "scenario": "E-commerce",
+          "event_type": "click",
+          "context": {
+            "product_source": "meituan_takeout",
+            "product_id": "3107",
+            "item_title": "8a2234-68334-322524-082380-233398-33816-121306-402923-8c2935-8a2234-5315-e5445-431608-272349",
+            "item_desc": "",
+            "item_price": 20.0,
+            "external_item_title": "",
+            "category_level1_name": "0",
+            "category_level2_name": "0",
+            "category_level3_name": "1",
+            "industry_level1_name": "Food Delivery",
+            "industry_level2_name": "0",
+            "industry_level3_name": "0"
+          },
+          "action": {
+            "type": "click",
+            "click_cnt": 1
+          }
+        },
+        {
+          "event_id": "0:0:3",
+          "source_record_id": "0:0",
+          "action_index": 3,
+          "event_time": "2021-03-17T16:40:22",
+          "time_precision": "second",
+          "scenario": "E-commerce",
+          "event_type": "click",
+          "context": {
+            "product_source": "meituan_takeout",
+            "product_id": "3237",
+            "item_title": "87965-863895-323291-791987-082380-233398-323291-021794-791987-121306-402923-84752-431608-272349",
+            "item_desc": "",
+            "item_price": 20.0,
+            "external_item_title": "",
+            "category_level1_name": "0",
+            "category_level2_name": "1",
+            "category_level3_name": "3",
+            "industry_level1_name": "Food Delivery",
+            "industry_level2_name": "0",
+            "industry_level3_name": "1"
+          },
+          "action": {
+            "type": "click",
+            "click_cnt": 1
+          }
+        },
+        {
+          "event_id": "0:0:4",
+          "source_record_id": "0:0",
+          "action_index": 4,
+          "event_time": "2021-03-17T16:40:52",
+          "time_precision": "second",
+          "scenario": "E-commerce",
+          "event_type": "click",
+          "context": {
+            "product_source": "meituan_takeout",
+            "product_id": "353",
+            "item_title": "451278-262624-e41314-6f228-121306-102277-9f1640-402923-84752-002989-5a1765-ba1465-431608-272349",
+            "item_desc": "",
+            "item_price": 20.0,
+            "external_item_title": "",
+            "category_level1_name": "0",
+            "category_level2_name": "1",
+            "category_level3_name": "23",
+            "industry_level1_name": "Food Delivery",
+            "industry_level2_name": "0",
+            "industry_level3_name": "1"
+          },
+          "action": {
+            "type": "click",
+            "click_cnt": 1
+          }
+        },
+        {
+          "event_id": "0:0:5",
+          "source_record_id": "0:0",
+          "action_index": 5,
+          "event_time": "2021-03-17T16:41:22",
+          "time_precision": "second",
+          "scenario": "E-commerce",
+          "event_type": "click",
+          "context": {
+            "product_source": "meituan_takeout",
+            "product_id": "133",
+            "item_title": "ff2187-cc2898-082380-233398-323291-021794-121306-051683-353977-431608-272349",
+            "item_desc": "",
+            "item_price": 20.0,
+            "external_item_title": "",
+            "category_level1_name": "0",
+            "category_level2_name": "1",
+            "category_level3_name": "3",
+            "industry_level1_name": "Food Delivery",
+            "industry_level2_name": "0",
+            "industry_level3_name": "1"
+          },
+          "action": {
+            "type": "click",
+            "click_cnt": 1
+          }
+        },
+        {
+          "event_id": "0:0:6",
+          "source_record_id": "0:0",
+          "action_index": 6,
+          "event_time": "2021-03-17T16:41:52",
+          "time_precision": "second",
+          "scenario": "E-commerce",
+          "event_type": "click",
+          "context": {
+            "product_source": "meituan_takeout",
+            "product_id": "3071",
+            "item_title": "c52955-5b1293-082380-233398-323291-021794-121306-402923-84752-431608-272349",
+            "item_desc": "",
+            "item_price": 20.0,
+            "external_item_title": "",
+            "category_level1_name": "0",
+            "category_level2_name": "1",
+            "category_level3_name": "3",
+            "industry_level1_name": "Food Delivery",
+            "industry_level2_name": "0",
+            "industry_level3_name": "1"
+          },
+          "action": {
+            "type": "click",
+            "click_cnt": 1
+          }
+        },
+        {
+          "event_id": "0:0:7",
+          "source_record_id": "0:0",
+          "action_index": 7,
+          "event_time": "2021-03-17T16:42:22",
+          "time_precision": "second",
+          "scenario": "E-commerce",
+          "event_type": "click",
+          "context": {
+            "product_source": "meituan_takeout",
+            "product_id": "3071",
+            "item_title": "c52955-5b1293-082380-233398-323291-021794-121306-402923-84752-431608-272349",
+            "item_desc": "",
+            "item_price": 20.0,
+            "external_item_title": "",
+            "category_level1_name": "0",
+            "category_level2_name": "1",
+            "category_level3_name": "3",
+            "industry_level1_name": "Food Delivery",
+            "industry_level2_name": "0",
+            "industry_level3_name": "1"
+          },
+          "action": {
+            "type": "click",
+            "click_cnt": 1
+          }
+        },
+        {
+          "event_id": "0:0:8",
+          "source_record_id": "0:0",
+          "action_index": 8,
+          "event_time": "2021-03-17T16:42:52",
+          "time_precision": "second",
+          "scenario": "E-commerce",
+          "event_type": "click",
+          "context": {
+            "product_source": "meituan_takeout",
+            "product_id": "68",
+            "item_title": "021922-7f4028-b61275-0c1478-c62143-8b3036-7f4028-fc3373-f63938-24424-341620-233398-6d3428-121306-402923-84752-923691-072768-431608-272349",
+            "item_desc": "",
+            "item_price": 20.0,
+            "external_item_title": "",
+            "category_level1_name": "0",
+            "category_level2_name": "0",
+            "category_level3_name": "39",
+            "industry_level1_name": "Food Delivery",
+            "industry_level2_name": "0",
+            "industry_level3_name": "0"
+          },
+          "action": {
+            "type": "click",
+            "click_cnt": 1
+          }
+        },
+        {
+          "event_id": "0:0:9",
+          "source_record_id": "0:0",
+          "action_index": 9,
+          "event_time": "2021-03-17T16:43:22",
+          "time_precision": "second",
+          "scenario": "E-commerce",
+          "event_type": "click",
+          "context": {
+            "product_source": "meituan_takeout",
+            "product_id": "1202",
+            "item_title": "2d2779-002989-7d1638-a22084-de2424-fc3373-121306-402923-ba2675-271898-231660-d0128-431608-272349",
+            "item_desc": "",
+            "item_price": 20.0,
+            "external_item_title": "",
+            "category_level1_name": "0",
+            "category_level2_name": "0",
+            "category_level3_name": "15",
+            "industry_level1_name": "Food Delivery",
+            "industry_level2_name": "0",
+            "industry_level3_name": "0"
+          },
+          "action": {
+            "type": "click",
+            "click_cnt": 1
+          }
+        },
+        {
+          "event_id": "0:0:10",
+          "source_record_id": "0:0",
+          "action_index": 10,
+          "event_time": "2021-03-17T16:43:52",
+          "time_precision": "second",
+          "scenario": "E-commerce",
+          "event_type": "click",
+          "context": {
+            "product_source": "meituan_takeout",
+            "product_id": "1285",
+            "item_title": "b43550-c22442-323291-c62143-87965-863895-0b4049-c21871-a93677-a23694-b43550-121306-402923-84752-431608-272349",
+            "item_desc": "",
+            "item_price": 20.0,
+            "external_item_title": "",
+            "category_level1_name": "0",
+            "category_level2_name": "0",
+            "category_level3_name": "15",
+            "industry_level1_name": "Food Delivery",
+            "industry_level2_name": "0",
+            "industry_level3_name": "0"
+          },
+          "action": {
+            "type": "click",
+            "click_cnt": 1
+          }
+        },
+        {
+          "event_id": "0:0:11",
+          "source_record_id": "0:0",
+          "action_index": 11,
+          "event_time": "2021-03-17T16:44:22",
+          "time_precision": "second",
+          "scenario": "E-commerce",
+          "event_type": "click",
+          "context": {
+            "product_source": "meituan_takeout",
+            "product_id": "1800",
+            "item_title": "8a2234-74760-14513-14513-082380-233398-a23694-791987-082380-233398-33816-121306-402923-84752-431608-272349",
+            "item_desc": "",
+            "item_price": 20.0,
+            "external_item_title": "",
+            "category_level1_name": "0",
+            "category_level2_name": "0",
+            "category_level3_name": "1",
+            "industry_level1_name": "Food Delivery",
+            "industry_level2_name": "0",
+            "industry_level3_name": "0"
+          },
+          "action": {
+            "type": "click",
+            "click_cnt": 1
+          }
+        },
+        {
+          "event_id": "0:0:12",
+          "source_record_id": "0:0",
+          "action_index": 12,
+          "event_time": "2021-03-17T16:44:52",
+          "time_precision": "second",
+          "scenario": "E-commerce",
+          "event_type": "click",
+          "context": {
+            "product_source": "meituan_takeout",
+            "product_id": "2603",
+            "item_title": "a8269-a8269-0b4049-b82604-121306-402923-84752-431608-272349",
+            "item_desc": "",
+            "item_price": 20.0,
+            "external_item_title": "",
+            "category_level1_name": "0",
+            "category_level2_name": "0",
+            "category_level3_name": "57",
+            "industry_level1_name": "Food Delivery",
+            "industry_level2_name": "0",
+            "industry_level3_name": "0"
+          },
+          "action": {
+            "type": "click",
+            "click_cnt": 1
+          }
+        },
+        {
+          "event_id": "0:0:13",
+          "source_record_id": "0:0",
+          "action_index": 13,
+          "event_time": "2021-03-17T16:45:22",
+          "time_precision": "second",
+          "scenario": "E-commerce",
+          "event_type": "purchase",
+          "context": {
+            "product_source": "meituan_takeout",
+            "product_id": "1714",
+            "item_title": "d63854-042150-323291-5f38-021794-153799-2c1019",
+            "item_desc": "",
+            "item_price": 20.0,
+            "external_item_title": "",
+            "category_level1_name": "0",
+            "category_level2_name": "1",
+            "category_level3_name": "30",
+            "industry_level1_name": "Food Delivery",
+            "industry_level2_name": "0",
+            "industry_level3_name": "1"
+          },
+          "action": {
+            "type": "purchase",
+            "is_pay": true,
+            "order_price_interval": "<29",
+            "order_amt": 20.0,
+            "item_cnt": 1
+          }
+        },
+        {
+          "event_id": "0:1:0",
+          "source_record_id": "0:1",
+          "action_index": 0,
+          "event_time": "2021-03-20T14:16:43",
+          "time_precision": "second",
+          "scenario": "E-commerce",
+          "event_type": "click",
+          "context": {
+            "product_source": "meituan_takeout",
+            "product_id": "1714",
+            "item_title": "d63854-042150-323291-5f38-021794-153799-2c1019",
+            "item_desc": "",
+            "item_price": 20.0,
+            "external_item_title": "",
+            "category_level1_name": "0",
+            "category_level2_name": "1",
+            "category_level3_name": "30",
+            "industry_level1_name": "Food Delivery",
+            "industry_level2_name": "0",
+            "industry_level3_name": "1"
+          },
+          "action": {
+            "type": "click",
+            "click_cnt": 1
+          }
+        },
+        {
+          "event_id": "0:1:1",
+          "source_record_id": "0:1",
+          "action_index": 1,
+          "event_time": "2021-03-20T14:17:13",
+          "time_precision": "second",
+          "scenario": "E-commerce",
+          "event_type": "click",
+          "context": {
+            "product_source": "meituan_takeout",
+            "product_id": "1714",
+            "item_title": "d63854-042150-323291-5f38-021794-153799-2c1019",
+            "item_desc": "",
+            "item_price": 20.0,
+            "external_item_title": "",
+            "category_level1_name": "0",
+            "category_level2_name": "1",
+            "category_level3_name": "30",
+            "industry_level1_name": "Food Delivery",
+            "industry_level2_name": "0",
+            "industry_level3_name": "1"
+          },
+          "action": {
+            "type": "click",
+            "click_cnt": 1
+          }
+        },
+        {
+          "event_id": "0:1:2",
+          "source_record_id": "0:1",
+          "action_index": 2,
+          "event_time": "2021-03-20T14:17:43",
+          "time_precision": "second",
+          "scenario": "E-commerce",
+          "event_type": "click",
+          "context": {
+            "product_source": "meituan_takeout",
+            "product_id": "353",
+            "item_title": "451278-262624-e41314-6f228-121306-102277-9f1640-402923-84752-002989-5a1765-ba1465-431608-272349",
+            "item_desc": "",
+            "item_price": 20.0,
+            "external_item_title": "",
+            "category_level1_name": "0",
+            "category_level2_name": "1",
+            "category_level3_name": "23",
+            "industry_level1_name": "Food Delivery",
+            "industry_level2_name": "0",
+            "industry_level3_name": "1"
+          },
+          "action": {
+            "type": "click",
+            "click_cnt": 1
+          }
+        },
+        {
+          "event_id": "0:1:3",
+          "source_record_id": "0:1",
+          "action_index": 3,
+          "event_time": "2021-03-20T14:18:13",
+          "time_precision": "second",
+          "scenario": "E-commerce",
+          "event_type": "click",
+          "context": {
+            "product_source": "meituan_takeout",
+            "product_id": "1202",
+            "item_title": "2d2779-002989-7d1638-a22084-de2424-fc3373-121306-402923-ba2675-271898-231660-d0128-431608-272349",
+            "item_desc": "",
+            "item_price": 20.0,
+            "external_item_title": "",
+            "category_level1_name": "0",
+            "category_level2_name": "0",
+            "category_level3_name": "15",
+            "industry_level1_name": "Food Delivery",
+            "industry_level2_name": "0",
+            "industry_level3_name": "0"
+          },
+          "action": {
+            "type": "click",
+            "click_cnt": 1
+          }
+        },
+        {
+          "event_id": "0:1:4",
+          "source_record_id": "0:1",
+          "action_index": 4,
+          "event_time": "2021-03-20T14:18:43",
+          "time_precision": "second",
+          "scenario": "E-commerce",
+          "event_type": "click",
+          "context": {
+            "product_source": "meituan_takeout",
+            "product_id": "1317",
+            "item_title": "931572-2e1710-d13754-fc3373-6d3428",
+            "item_desc": "",
+            "item_price": 20.0,
+            "external_item_title": "",
+            "category_level1_name": "0",
+            "category_level2_name": "0",
+            "category_level3_name": "9",
+            "industry_level1_name": "Food Delivery",
+            "industry_level2_name": "0",
+            "industry_level3_name": "0"
+          },
+          "action": {
+            "type": "click",
+            "click_cnt": 1
+          }
+        },
+        {
+          "event_id": "0:1:5",
+          "source_record_id": "0:1",
+          "action_index": 5,
+          "event_time": "2021-03-20T14:19:13",
+          "time_precision": "second",
+          "scenario": "E-commerce",
+          "event_type": "click",
+          "context": {
+            "product_source": "meituan_takeout",
+            "product_id": "2367",
+            "item_title": "5d2360-094065-74760-121306-ce141-682644-063761-431608-272349",
+            "item_desc": "",
+            "item_price": 20.0,
+            "external_item_title": "",
+            "category_level1_name": "0",
+            "category_level2_name": "0",
+            "category_level3_name": "15",
+            "industry_level1_name": "Food Delivery",
+            "industry_level2_name": "0",
+            "industry_level3_name": "0"
+          },
+          "action": {
+            "type": "click",
+            "click_cnt": 1
+          }
+        },
+        {
+          "event_id": "0:1:6",
+          "source_record_id": "0:1",
+          "action_index": 6,
+          "event_time": "2021-03-20T14:19:43",
+          "time_precision": "second",
+          "scenario": "E-commerce",
+          "event_type": "click",
+          "context": {
+            "product_source": "meituan_takeout",
+            "product_id": "2173",
+            "item_title": "222094-102804-c02692-693510-c94046-623009-922125-b2193-b43550-121306-402923-84752-431608-272349",
+            "item_desc": "",
+            "item_price": 20.0,
+            "external_item_title": "",
+            "category_level1_name": "0",
+            "category_level2_name": "0",
+            "category_level3_name": "15",
+            "industry_level1_name": "Food Delivery",
+            "industry_level2_name": "0",
+            "industry_level3_name": "0"
+          },
+          "action": {
+            "type": "click",
+            "click_cnt": 1
+          }
+        },
+        {
+          "event_id": "0:1:7",
+          "source_record_id": "0:1",
+          "action_index": 7,
+          "event_time": "2021-03-20T14:20:13",
+          "time_precision": "second",
+          "scenario": "E-commerce",
+          "event_type": "click",
+          "context": {
+            "product_source": "meituan_takeout",
+            "product_id": "456",
+            "item_title": "6b3322-423697-2c1019-43819-b43550-121306-a22084-083121-231402-353998-67198-063761-431608-272349",
+            "item_desc": "",
+            "item_price": 20.0,
+            "external_item_title": "",
+            "category_level1_name": "0",
+            "category_level2_name": "0",
+            "category_level3_name": "56",
+            "industry_level1_name": "Food Delivery",
+            "industry_level2_name": "0",
+            "industry_level3_name": "0"
+          },
+          "action": {
+            "type": "click",
+            "click_cnt": 1
+          }
+        },
+        {
+          "event_id": "0:1:8",
+          "source_record_id": "0:1",
+          "action_index": 8,
+          "event_time": "2021-03-20T14:20:43",
+          "time_precision": "second",
+          "scenario": "E-commerce",
+          "event_type": "purchase",
+          "context": {
+            "product_source": "meituan_takeout",
+            "product_id": "1733",
+            "item_title": "b43550-e72968-c62143-8a2234-772477-4a2318-c62143-002989-102277-9f1640-1d1024-231660-863895-c62143",
+            "item_desc": "",
+            "item_price": 20.0,
+            "external_item_title": "",
+            "category_level1_name": "0",
+            "category_level2_name": "1",
+            "category_level3_name": "2",
+            "industry_level1_name": "Food Delivery",
+            "industry_level2_name": "0",
+            "industry_level3_name": "1"
+          },
+          "action": {
+            "type": "purchase",
+            "is_pay": true,
+            "order_price_interval": "<29",
+            "order_amt": 20.0,
+            "item_cnt": 1
+          }
+        }
+      ]
+    }
+  },
+  {
+    "sample_id": "100052:2021-03-21T23:59:59:closed",
+    "input": {
+      "user_id": "100052",
+      "cutoff_time": "2021-03-21T23:59:59",
+      "cutoff_inclusive": true,
+      "timezone": null,
+      "history_order_known": true,
+      "history_truncated": false,
+      "history_group_truncated": false,
+      "profile": {
+        "as_of_time": "2021-03-21T23:59:59",
+        "active_days_30d": 6,
+        "event_count_30d": 15,
+        "e_commerce_event_count_30d": 15,
+        "video_browsing_event_count_30d": 0,
+        "live_streaming_event_count_30d": 0,
+        "advertisement_event_count_30d": 0,
+        "search_behavior_event_count_30d": 0,
+        "customer_service_event_count_30d": 0
+      },
+      "history": [
+        {
+          "event_id": "100052:0:0",
+          "source_record_id": "100052:0",
+          "action_index": 0,
+          "event_time": "2021-03-08T16:21:42",
+          "time_precision": "second",
+          "scenario": "E-commerce",
+          "event_type": "purchase",
+          "context": {
+            "product_source": "meituan_takeout",
+            "product_id": "2803",
+            "item_title": "16978-231497-1b3461-ea2006-87107-b6684-a8274-603585-0a2432-292238-6b3409-a54081-3c1399-c34009-2c1019-121306-402923-84752-431608-272349",
+            "item_desc": "",
+            "item_price": 20.0,
+            "external_item_title": "",
+            "category_level1_name": "0",
+            "category_level2_name": "7",
+            "category_level3_name": "37",
+            "industry_level1_name": "Food Delivery",
+            "industry_level2_name": "0",
+            "industry_level3_name": "7"
+          },
+          "action": {
+            "type": "purchase",
+            "is_pay": true,
+            "order_price_interval": "<29",
+            "order_amt": 20.0,
+            "item_cnt": 1
+          }
+        },
+        {
+          "event_id": "100052:1:0",
+          "source_record_id": "100052:1",
+          "action_index": 0,
+          "event_time": "2021-03-09T06:52:28",
+          "time_precision": "second",
+          "scenario": "E-commerce",
+          "event_type": "purchase",
+          "context": {
+            "product_source": "meituan_takeout",
+            "product_id": "2417",
+            "item_title": "e33426-1c925-47381-121306-353998-67198-063761-431608-272349",
+            "item_desc": "",
+            "item_price": 20.0,
+            "external_item_title": "",
+            "category_level1_name": "0",
+            "category_level2_name": "0",
+            "category_level3_name": "12",
+            "industry_level1_name": "Food Delivery",
+            "industry_level2_name": "0",
+            "industry_level3_name": "0"
+          },
+          "action": {
+            "type": "purchase",
+            "is_pay": true,
+            "order_price_interval": "<29",
+            "order_amt": 20.0,
+            "item_cnt": 1
+          }
+        },
+        {
+          "event_id": "100052:2:0",
+          "source_record_id": "100052:2",
+          "action_index": 0,
+          "event_time": "2021-03-11T07:51:02",
+          "time_precision": "second",
+          "scenario": "E-commerce",
+          "event_type": "purchase",
+          "context": {
+            "product_source": "meituan_takeout",
+            "product_id": "3093",
+            "item_title": "402923-e61012-e33426-1c925-961815-121306-e52645-961904-002989-d72063-c62143-55455-7f4028-312841-5a3493-c62143-552306-eb3177-871632-431608-272349",
+            "item_desc": "",
+            "item_price": 20.0,
+            "external_item_title": "",
+            "category_level1_name": "0",
+            "category_level2_name": "0",
+            "category_level3_name": "12",
+            "industry_level1_name": "Food Delivery",
+            "industry_level2_name": "0",
+            "industry_level3_name": "0"
+          },
+          "action": {
+            "type": "purchase",
+            "is_pay": true,
+            "order_price_interval": "<29",
+            "order_amt": 20.0,
+            "item_cnt": 1
+          }
+        },
+        {
+          "event_id": "100052:3:0",
+          "source_record_id": "100052:3",
+          "action_index": 0,
+          "event_time": "2021-03-11T10:45:57",
+          "time_precision": "second",
+          "scenario": "E-commerce",
+          "event_type": "purchase",
+          "context": {
+            "product_source": "meituan_takeout",
+            "product_id": "1202",
+            "item_title": "2d2779-002989-7d1638-a22084-de2424-fc3373-121306-402923-ba2675-271898-231660-d0128-431608-272349",
+            "item_desc": "",
+            "item_price": 20.0,
+            "external_item_title": "",
+            "category_level1_name": "0",
+            "category_level2_name": "0",
+            "category_level3_name": "15",
+            "industry_level1_name": "Food Delivery",
+            "industry_level2_name": "0",
+            "industry_level3_name": "0"
+          },
+          "action": {
+            "type": "purchase",
+            "is_pay": true,
+            "order_price_interval": "<29",
+            "order_amt": 20.0,
+            "item_cnt": 1
+          }
+        },
+        {
+          "event_id": "100052:4:0",
+          "source_record_id": "100052:4",
+          "action_index": 0,
+          "event_time": "2021-03-14T07:10:57",
+          "time_precision": "second",
+          "scenario": "E-commerce",
+          "event_type": "click",
+          "context": {
+            "product_source": "meituan_takeout",
+            "product_id": "2417",
+            "item_title": "e33426-1c925-47381-121306-353998-67198-063761-431608-272349",
+            "item_desc": "",
+            "item_price": 20.0,
+            "external_item_title": "",
+            "category_level1_name": "0",
+            "category_level2_name": "0",
+            "category_level3_name": "12",
+            "industry_level1_name": "Food Delivery",
+            "industry_level2_name": "0",
+            "industry_level3_name": "0"
+          },
+          "action": {
+            "type": "click",
+            "click_cnt": 1
+          }
+        },
+        {
+          "event_id": "100052:4:1",
+          "source_record_id": "100052:4",
+          "action_index": 1,
+          "event_time": "2021-03-14T07:11:27",
+          "time_precision": "second",
+          "scenario": "E-commerce",
+          "event_type": "click",
+          "context": {
+            "product_source": "meituan_takeout",
+            "product_id": "2417",
+            "item_title": "e33426-1c925-47381-121306-353998-67198-063761-431608-272349",
+            "item_desc": "",
+            "item_price": 20.0,
+            "external_item_title": "",
+            "category_level1_name": "0",
+            "category_level2_name": "0",
+            "category_level3_name": "12",
+            "industry_level1_name": "Food Delivery",
+            "industry_level2_name": "0",
+            "industry_level3_name": "0"
+          },
+          "action": {
+            "type": "click",
+            "click_cnt": 1
+          }
+        },
+        {
+          "event_id": "100052:4:2",
+          "source_record_id": "100052:4",
+          "action_index": 2,
+          "event_time": "2021-03-14T07:11:57",
+          "time_precision": "second",
+          "scenario": "E-commerce",
+          "event_type": "click",
+          "context": {
+            "product_source": "meituan_takeout",
+            "product_id": "3093",
+            "item_title": "402923-e61012-e33426-1c925-961815-121306-e52645-961904-002989-d72063-c62143-55455-7f4028-312841-5a3493-c62143-552306-eb3177-871632-431608-272349",
+            "item_desc": "",
+            "item_price": 20.0,
+            "external_item_title": "",
+            "category_level1_name": "0",
+            "category_level2_name": "0",
+            "category_level3_name": "12",
+            "industry_level1_name": "Food Delivery",
+            "industry_level2_name": "0",
+            "industry_level3_name": "0"
+          },
+          "action": {
+            "type": "click",
+            "click_cnt": 1
+          }
+        },
+        {
+          "event_id": "100052:4:3",
+          "source_record_id": "100052:4",
+          "action_index": 3,
+          "event_time": "2021-03-14T07:12:27",
+          "time_precision": "second",
+          "scenario": "E-commerce",
+          "event_type": "purchase",
+          "context": {
+            "product_source": "meituan_takeout",
+            "product_id": "3093",
+            "item_title": "402923-e61012-e33426-1c925-961815-121306-e52645-961904-002989-d72063-c62143-55455-7f4028-312841-5a3493-c62143-552306-eb3177-871632-431608-272349",
+            "item_desc": "",
+            "item_price": 20.0,
+            "external_item_title": "",
+            "category_level1_name": "0",
+            "category_level2_name": "0",
+            "category_level3_name": "12",
+            "industry_level1_name": "Food Delivery",
+            "industry_level2_name": "0",
+            "industry_level3_name": "0"
+          },
+          "action": {
+            "type": "purchase",
+            "is_pay": true,
+            "order_price_interval": "<29",
+            "order_amt": 20.0,
+            "item_cnt": 1
+          }
+        },
+        {
+          "event_id": "100052:5:0",
+          "source_record_id": "100052:5",
+          "action_index": 0,
+          "event_time": "2021-03-14T10:33:19",
+          "time_precision": "second",
+          "scenario": "E-commerce",
+          "event_type": "click",
+          "context": {
+            "product_source": "meituan_takeout",
+            "product_id": "2417",
+            "item_title": "e33426-1c925-47381-121306-353998-67198-063761-431608-272349",
+            "item_desc": "",
+            "item_price": 42.5,
+            "external_item_title": "",
+            "category_level1_name": "0",
+            "category_level2_name": "0",
+            "category_level3_name": "12",
+            "industry_level1_name": "Food Delivery",
+            "industry_level2_name": "0",
+            "industry_level3_name": "0"
+          },
+          "action": {
+            "type": "click",
+            "click_cnt": 1
+          }
+        },
+        {
+          "event_id": "100052:5:1",
+          "source_record_id": "100052:5",
+          "action_index": 1,
+          "event_time": "2021-03-14T10:33:49",
+          "time_precision": "second",
+          "scenario": "E-commerce",
+          "event_type": "click",
+          "context": {
+            "product_source": "meituan_takeout",
+            "product_id": "2417",
+            "item_title": "e33426-1c925-47381-121306-353998-67198-063761-431608-272349",
+            "item_desc": "",
+            "item_price": 42.5,
+            "external_item_title": "",
+            "category_level1_name": "0",
+            "category_level2_name": "0",
+            "category_level3_name": "12",
+            "industry_level1_name": "Food Delivery",
+            "industry_level2_name": "0",
+            "industry_level3_name": "0"
+          },
+          "action": {
+            "type": "click",
+            "click_cnt": 1
+          }
+        },
+        {
+          "event_id": "100052:5:2",
+          "source_record_id": "100052:5",
+          "action_index": 2,
+          "event_time": "2021-03-14T10:34:19",
+          "time_precision": "second",
+          "scenario": "E-commerce",
+          "event_type": "click",
+          "context": {
+            "product_source": "meituan_takeout",
+            "product_id": "3093",
+            "item_title": "402923-e61012-e33426-1c925-961815-121306-e52645-961904-002989-d72063-c62143-55455-7f4028-312841-5a3493-c62143-552306-eb3177-871632-431608-272349",
+            "item_desc": "",
+            "item_price": 42.5,
+            "external_item_title": "",
+            "category_level1_name": "0",
+            "category_level2_name": "0",
+            "category_level3_name": "12",
+            "industry_level1_name": "Food Delivery",
+            "industry_level2_name": "0",
+            "industry_level3_name": "0"
+          },
+          "action": {
+            "type": "click",
+            "click_cnt": 1
+          }
+        },
+        {
+          "event_id": "100052:5:3",
+          "source_record_id": "100052:5",
+          "action_index": 3,
+          "event_time": "2021-03-14T10:34:49",
+          "time_precision": "second",
+          "scenario": "E-commerce",
+          "event_type": "purchase",
+          "context": {
+            "product_source": "meituan_takeout",
+            "product_id": "2413",
+            "item_title": "9f1640-1d1024-c22442-121306-353998-67198-063761-431608-272349",
+            "item_desc": "",
+            "item_price": 42.5,
+            "external_item_title": "",
+            "category_level1_name": "0",
+            "category_level2_name": "7",
+            "category_level3_name": "36",
+            "industry_level1_name": "Food Delivery",
+            "industry_level2_name": "0",
+            "industry_level3_name": "7"
+          },
+          "action": {
+            "type": "purchase",
+            "is_pay": true,
+            "order_price_interval": "[36,49)",
+            "order_amt": 42.5,
+            "item_cnt": 1
+          }
+        },
+        {
+          "event_id": "100052:6:0",
+          "source_record_id": "100052:6",
+          "action_index": 0,
+          "event_time": "2021-03-15T06:52:09",
+          "time_precision": "second",
+          "scenario": "E-commerce",
+          "event_type": "purchase",
+          "context": {
+            "product_source": "meituan_takeout",
+            "product_id": "3093",
+            "item_title": "402923-e61012-e33426-1c925-961815-121306-e52645-961904-002989-d72063-c62143-55455-7f4028-312841-5a3493-c62143-552306-eb3177-871632-431608-272349",
+            "item_desc": "",
+            "item_price": 20.0,
+            "external_item_title": "",
+            "category_level1_name": "0",
+            "category_level2_name": "0",
+            "category_level3_name": "12",
+            "industry_level1_name": "Food Delivery",
+            "industry_level2_name": "0",
+            "industry_level3_name": "0"
+          },
+          "action": {
+            "type": "purchase",
+            "is_pay": true,
+            "order_price_interval": "<29",
+            "order_amt": 20.0,
+            "item_cnt": 1
+          }
+        },
+        {
+          "event_id": "100052:7:0",
+          "source_record_id": "100052:7",
+          "action_index": 0,
+          "event_time": "2021-03-15T10:53:27",
+          "time_precision": "second",
+          "scenario": "E-commerce",
+          "event_type": "purchase",
+          "context": {
+            "product_source": "meituan_takeout",
+            "product_id": "1202",
+            "item_title": "2d2779-002989-7d1638-a22084-de2424-fc3373-121306-402923-ba2675-271898-231660-d0128-431608-272349",
+            "item_desc": "",
+            "item_price": 32.5,
+            "external_item_title": "",
+            "category_level1_name": "0",
+            "category_level2_name": "0",
+            "category_level3_name": "15",
+            "industry_level1_name": "Food Delivery",
+            "industry_level2_name": "0",
+            "industry_level3_name": "0"
+          },
+          "action": {
+            "type": "purchase",
+            "is_pay": true,
+            "order_price_interval": "[29,36)",
+            "order_amt": 32.5,
+            "item_cnt": 1
+          }
+        },
+        {
+          "event_id": "100052:8:0",
+          "source_record_id": "100052:8",
+          "action_index": 0,
+          "event_time": "2021-03-16T07:13:45",
+          "time_precision": "second",
+          "scenario": "E-commerce",
+          "event_type": "purchase",
+          "context": {
+            "product_source": "meituan_takeout",
+            "product_id": "3093",
+            "item_title": "402923-e61012-e33426-1c925-961815-121306-e52645-961904-002989-d72063-c62143-55455-7f4028-312841-5a3493-c62143-552306-eb3177-871632-431608-272349",
+            "item_desc": "",
+            "item_price": 20.0,
+            "external_item_title": "",
+            "category_level1_name": "0",
+            "category_level2_name": "0",
+            "category_level3_name": "12",
+            "industry_level1_name": "Food Delivery",
+            "industry_level2_name": "0",
+            "industry_level3_name": "0"
+          },
+          "action": {
+            "type": "purchase",
+            "is_pay": true,
+            "order_price_interval": "<29",
+            "order_amt": 20.0,
+            "item_cnt": 1
+          }
+        }
+      ]
+    }
+  },
+  {
+    "sample_id": "100060:2021-03-21T23:59:59:closed",
+    "input": {
+      "user_id": "100060",
+      "cutoff_time": "2021-03-21T23:59:59",
+      "cutoff_inclusive": true,
+      "timezone": null,
+      "history_order_known": true,
+      "history_truncated": false,
+      "history_group_truncated": false,
+      "profile": {
+        "as_of_time": "2021-03-21T23:59:59",
+        "active_days_30d": 3,
+        "event_count_30d": 3,
+        "e_commerce_event_count_30d": 3,
+        "video_browsing_event_count_30d": 0,
+        "live_streaming_event_count_30d": 0,
+        "advertisement_event_count_30d": 0,
+        "search_behavior_event_count_30d": 0,
+        "customer_service_event_count_30d": 0
+      },
+      "history": [
+        {
+          "event_id": "100060:0:0",
+          "source_record_id": "100060:0",
+          "action_index": 0,
+          "event_time": "2021-03-06T07:41:22",
+          "time_precision": "second",
+          "scenario": "E-commerce",
+          "event_type": "purchase",
+          "context": {
+            "product_source": "meituan_takeout",
+            "product_id": "3270",
+            "item_title": "402923-e61012-e33426-1c925-961815-121306-e52645-961904-002989-d72063-c62143-55455-7f4028-312841-5a3493-c62143-5e2725-a21596-063761-431608-272349",
+            "item_desc": "",
+            "item_price": 20.0,
+            "external_item_title": "",
+            "category_level1_name": "0",
+            "category_level2_name": "0",
+            "category_level3_name": "12",
+            "industry_level1_name": "Food Delivery",
+            "industry_level2_name": "0",
+            "industry_level3_name": "0"
+          },
+          "action": {
+            "type": "purchase",
+            "is_pay": true,
+            "order_price_interval": "<29",
+            "order_amt": 20.0,
+            "item_cnt": 1
+          }
+        },
+        {
+          "event_id": "100060:1:0",
+          "source_record_id": "100060:1",
+          "action_index": 0,
+          "event_time": "2021-03-11T20:18:34",
+          "time_precision": "second",
+          "scenario": "E-commerce",
+          "event_type": "purchase",
+          "context": {
+            "product_source": "meituan_takeout",
+            "product_id": "2442",
+            "item_title": "d52609-87965-dc2884-e93671-cf2679-2c1019-121306-251713-a21596-063761-431608-272349",
+            "item_desc": "",
+            "item_price": 32.5,
+            "external_item_title": "",
+            "category_level1_name": "0",
+            "category_level2_name": "0",
+            "category_level3_name": "106",
+            "industry_level1_name": "Food Delivery",
+            "industry_level2_name": "0",
+            "industry_level3_name": "0"
+          },
+          "action": {
+            "type": "purchase",
+            "is_pay": true,
+            "order_price_interval": "[29,36)",
+            "order_amt": 32.5,
+            "item_cnt": 1
+          }
+        },
+        {
+          "event_id": "100060:2:0",
+          "source_record_id": "100060:2",
+          "action_index": 0,
+          "event_time": "2021-03-20T17:01:08",
+          "time_precision": "second",
+          "scenario": "E-commerce",
+          "event_type": "purchase",
+          "context": {
+            "product_source": "meituan_takeout",
+            "product_id": "2644",
+            "item_title": "522406-75935-bd3656-251116-901015-d63854-243077-831064-19397-121306-5e2725-a21596-063761-431608-272349",
+            "item_desc": "",
+            "item_price": 42.5,
+            "external_item_title": "",
+            "category_level1_name": "0",
+            "category_level2_name": "0",
+            "category_level3_name": "4",
+            "industry_level1_name": "Food Delivery",
+            "industry_level2_name": "0",
+            "industry_level3_name": "0"
+          },
+          "action": {
+            "type": "purchase",
+            "is_pay": true,
+            "order_price_interval": "[36,49)",
+            "order_amt": 42.5,
+            "item_cnt": 1
+          }
+        }
+      ]
+    }
+  },
+  {
+    "sample_id": "100068:2021-03-21T23:59:59:closed",
+    "input": {
+      "user_id": "100068",
+      "cutoff_time": "2021-03-21T23:59:59",
+      "cutoff_inclusive": true,
+      "timezone": null,
+      "history_order_known": true,
+      "history_truncated": true,
+      "history_group_truncated": false,
+      "profile": {
+        "as_of_time": "2021-03-21T23:59:59",
+        "active_days_30d": 15,
+        "event_count_30d": 37,
+        "e_commerce_event_count_30d": 37,
+        "video_browsing_event_count_30d": 0,
+        "live_streaming_event_count_30d": 0,
+        "advertisement_event_count_30d": 0,
+        "search_behavior_event_count_30d": 0,
+        "customer_service_event_count_30d": 0
+      },
+      "history": [
+        {
+          "event_id": "100068:6:1",
+          "source_record_id": "100068:6",
+          "action_index": 1,
+          "event_time": "2021-03-10T09:00:07",
+          "time_precision": "second",
+          "scenario": "E-commerce",
+          "event_type": "click",
+          "context": {
+            "product_source": "meituan_takeout",
+            "product_id": "3263",
+            "item_title": "af1654-df3491-893740-5f1782-b43550-121306-8d3794-16978-a53996-901869-713861-901015-0a2820-4a1218-ae2775-5a1952-ac854-8c2935-431608-272349",
+            "item_desc": "",
+            "item_price": 20.0,
+            "external_item_title": "",
+            "category_level1_name": "0",
+            "category_level2_name": "0",
+            "category_level3_name": "108",
+            "industry_level1_name": "Food Delivery",
+            "industry_level2_name": "0",
+            "industry_level3_name": "0"
+          },
+          "action": {
+            "type": "click",
+            "click_cnt": 1
+          }
+        },
+        {
+          "event_id": "100068:6:2",
+          "source_record_id": "100068:6",
+          "action_index": 2,
+          "event_time": "2021-03-10T09:00:37",
+          "time_precision": "second",
+          "scenario": "E-commerce",
+          "event_type": "click",
+          "context": {
+            "product_source": "meituan_takeout",
+            "product_id": "2699",
+            "item_title": "af1654-c3176-e01010-032517-8b2706-f81036-af1654-4a2318-121306-402923-8d3237-063761-431608-272349",
+            "item_desc": "",
+            "item_price": 20.0,
+            "external_item_title": "",
+            "category_level1_name": "0",
+            "category_level2_name": "1",
+            "category_level3_name": "33",
+            "industry_level1_name": "Food Delivery",
+            "industry_level2_name": "0",
+            "industry_level3_name": "1"
+          },
+          "action": {
+            "type": "click",
+            "click_cnt": 1
+          }
+        },
+        {
+          "event_id": "100068:6:3",
+          "source_record_id": "100068:6",
+          "action_index": 3,
+          "event_time": "2021-03-10T09:01:07",
+          "time_precision": "second",
+          "scenario": "E-commerce",
+          "event_type": "purchase",
+          "context": {
+            "product_source": "meituan_takeout",
+            "product_id": "2603",
+            "item_title": "a8269-a8269-0b4049-b82604-121306-402923-84752-431608-272349",
+            "item_desc": "",
+            "item_price": 20.0,
+            "external_item_title": "",
+            "category_level1_name": "0",
+            "category_level2_name": "0",
+            "category_level3_name": "57",
+            "industry_level1_name": "Food Delivery",
+            "industry_level2_name": "0",
+            "industry_level3_name": "0"
+          },
+          "action": {
+            "type": "purchase",
+            "is_pay": true,
+            "order_price_interval": "<29",
+            "order_amt": 20.0,
+            "item_cnt": 1
+          }
+        },
+        {
+          "event_id": "100068:7:0",
+          "source_record_id": "100068:7",
+          "action_index": 0,
+          "event_time": "2021-03-10T13:22:56",
+          "time_precision": "second",
+          "scenario": "E-commerce",
+          "event_type": "click",
+          "context": {
+            "product_source": "meituan_takeout",
+            "product_id": "2603",
+            "item_title": "a8269-a8269-0b4049-b82604-121306-402923-84752-431608-272349",
+            "item_desc": "",
+            "item_price": 42.5,
+            "external_item_title": "",
+            "category_level1_name": "0",
+            "category_level2_name": "0",
+            "category_level3_name": "57",
+            "industry_level1_name": "Food Delivery",
+            "industry_level2_name": "0",
+            "industry_level3_name": "0"
+          },
+          "action": {
+            "type": "click",
+            "click_cnt": 1
+          }
+        },
+        {
+          "event_id": "100068:7:1",
+          "source_record_id": "100068:7",
+          "action_index": 1,
+          "event_time": "2021-03-10T13:23:26",
+          "time_precision": "second",
+          "scenario": "E-commerce",
+          "event_type": "click",
+          "context": {
+            "product_source": "meituan_takeout",
+            "product_id": "3263",
+            "item_title": "af1654-df3491-893740-5f1782-b43550-121306-8d3794-16978-a53996-901869-713861-901015-0a2820-4a1218-ae2775-5a1952-ac854-8c2935-431608-272349",
+            "item_desc": "",
+            "item_price": 42.5,
+            "external_item_title": "",
+            "category_level1_name": "0",
+            "category_level2_name": "0",
+            "category_level3_name": "108",
+            "industry_level1_name": "Food Delivery",
+            "industry_level2_name": "0",
+            "industry_level3_name": "0"
+          },
+          "action": {
+            "type": "click",
+            "click_cnt": 1
+          }
+        },
+        {
+          "event_id": "100068:7:2",
+          "source_record_id": "100068:7",
+          "action_index": 2,
+          "event_time": "2021-03-10T13:23:56",
+          "time_precision": "second",
+          "scenario": "E-commerce",
+          "event_type": "click",
+          "context": {
+            "product_source": "meituan_takeout",
+            "product_id": "2699",
+            "item_title": "af1654-c3176-e01010-032517-8b2706-f81036-af1654-4a2318-121306-402923-8d3237-063761-431608-272349",
+            "item_desc": "",
+            "item_price": 42.5,
+            "external_item_title": "",
+            "category_level1_name": "0",
+            "category_level2_name": "1",
+            "category_level3_name": "33",
+            "industry_level1_name": "Food Delivery",
+            "industry_level2_name": "0",
+            "industry_level3_name": "1"
+          },
+          "action": {
+            "type": "click",
+            "click_cnt": 1
+          }
+        },
+        {
+          "event_id": "100068:7:3",
+          "source_record_id": "100068:7",
+          "action_index": 3,
+          "event_time": "2021-03-10T13:24:26",
+          "time_precision": "second",
+          "scenario": "E-commerce",
+          "event_type": "purchase",
+          "context": {
+            "product_source": "meituan_takeout",
+            "product_id": "549",
+            "item_title": "af1654-df3491-52727-1b3386-4a2318-931140-121306-38860-682644-501648-ca2010-431608-272349",
+            "item_desc": "",
+            "item_price": 42.5,
+            "external_item_title": "",
+            "category_level1_name": "0",
+            "category_level2_name": "1",
+            "category_level3_name": "33",
+            "industry_level1_name": "Food Delivery",
+            "industry_level2_name": "0",
+            "industry_level3_name": "1"
+          },
+          "action": {
+            "type": "purchase",
+            "is_pay": true,
+            "order_price_interval": "[36,49)",
+            "order_amt": 42.5,
+            "item_cnt": 1
+          }
+        },
+        {
+          "event_id": "100068:8:0",
+          "source_record_id": "100068:8",
+          "action_index": 0,
+          "event_time": "2021-03-11T09:10:37",
+          "time_precision": "second",
+          "scenario": "E-commerce",
+          "event_type": "purchase",
+          "context": {
+            "product_source": "meituan_takeout",
+            "product_id": "2603",
+            "item_title": "a8269-a8269-0b4049-b82604-121306-402923-84752-431608-272349",
+            "item_desc": "",
+            "item_price": 20.0,
+            "external_item_title": "",
+            "category_level1_name": "0",
+            "category_level2_name": "0",
+            "category_level3_name": "57",
+            "industry_level1_name": "Food Delivery",
+            "industry_level2_name": "0",
+            "industry_level3_name": "0"
+          },
+          "action": {
+            "type": "purchase",
+            "is_pay": true,
+            "order_price_interval": "<29",
+            "order_amt": 20.0,
+            "item_cnt": 1
+          }
+        },
+        {
+          "event_id": "100068:9:0",
+          "source_record_id": "100068:9",
+          "action_index": 0,
+          "event_time": "2021-03-12T14:48:16",
+          "time_precision": "second",
+          "scenario": "E-commerce",
+          "event_type": "purchase",
+          "context": {
+            "product_source": "meituan_takeout",
+            "product_id": "3263",
+            "item_title": "af1654-df3491-893740-5f1782-b43550-121306-8d3794-16978-a53996-901869-713861-901015-0a2820-4a1218-ae2775-5a1952-ac854-8c2935-431608-272349",
+            "item_desc": "",
+            "item_price": 20.0,
+            "external_item_title": "",
+            "category_level1_name": "0",
+            "category_level2_name": "0",
+            "category_level3_name": "108",
+            "industry_level1_name": "Food Delivery",
+            "industry_level2_name": "0",
+            "industry_level3_name": "0"
+          },
+          "action": {
+            "type": "purchase",
+            "is_pay": true,
+            "order_price_interval": "<29",
+            "order_amt": 20.0,
+            "item_cnt": 1
+          }
+        },
+        {
+          "event_id": "100068:10:0",
+          "source_record_id": "100068:10",
+          "action_index": 0,
+          "event_time": "2021-03-13T13:05:16",
+          "time_precision": "second",
+          "scenario": "E-commerce",
+          "event_type": "purchase",
+          "context": {
+            "product_source": "meituan_takeout",
+            "product_id": "3263",
+            "item_title": "af1654-df3491-893740-5f1782-b43550-121306-8d3794-16978-a53996-901869-713861-901015-0a2820-4a1218-ae2775-5a1952-ac854-8c2935-431608-272349",
+            "item_desc": "",
+            "item_price": 20.0,
+            "external_item_title": "",
+            "category_level1_name": "0",
+            "category_level2_name": "0",
+            "category_level3_name": "108",
+            "industry_level1_name": "Food Delivery",
+            "industry_level2_name": "0",
+            "industry_level3_name": "0"
+          },
+          "action": {
+            "type": "purchase",
+            "is_pay": true,
+            "order_price_interval": "<29",
+            "order_amt": 20.0,
+            "item_cnt": 1
+          }
+        },
+        {
+          "event_id": "100068:11:0",
+          "source_record_id": "100068:11",
+          "action_index": 0,
+          "event_time": "2021-03-14T12:57:21",
+          "time_precision": "second",
+          "scenario": "E-commerce",
+          "event_type": "purchase",
+          "context": {
+            "product_source": "meituan_takeout",
+            "product_id": "3263",
+            "item_title": "af1654-df3491-893740-5f1782-b43550-121306-8d3794-16978-a53996-901869-713861-901015-0a2820-4a1218-ae2775-5a1952-ac854-8c2935-431608-272349",
+            "item_desc": "",
+            "item_price": 20.0,
+            "external_item_title": "",
+            "category_level1_name": "0",
+            "category_level2_name": "0",
+            "category_level3_name": "108",
+            "industry_level1_name": "Food Delivery",
+            "industry_level2_name": "0",
+            "industry_level3_name": "0"
+          },
+          "action": {
+            "type": "purchase",
+            "is_pay": true,
+            "order_price_interval": "<29",
+            "order_amt": 20.0,
+            "item_cnt": 1
+          }
+        },
+        {
+          "event_id": "100068:12:0",
+          "source_record_id": "100068:12",
+          "action_index": 0,
+          "event_time": "2021-03-17T10:09:08",
+          "time_precision": "second",
+          "scenario": "E-commerce",
+          "event_type": "purchase",
+          "context": {
+            "product_source": "meituan_takeout",
+            "product_id": "3055",
+            "item_title": "a4961-072829-ae206-80612-bd747-e52645-121306-402923-84752-923691-072768-f83624-b43550-d0128-431608-272349",
+            "item_desc": "",
+            "item_price": 20.0,
+            "external_item_title": "",
+            "category_level1_name": "0",
+            "category_level2_name": "0",
+            "category_level3_name": "15",
+            "industry_level1_name": "Food Delivery",
+            "industry_level2_name": "0",
+            "industry_level3_name": "0"
+          },
+          "action": {
+            "type": "purchase",
+            "is_pay": true,
+            "order_price_interval": "<29",
+            "order_amt": 20.0,
+            "item_cnt": 1
+          }
+        },
+        {
+          "event_id": "100068:13:0",
+          "source_record_id": "100068:13",
+          "action_index": 0,
+          "event_time": "2021-03-18T16:13:06",
+          "time_precision": "second",
+          "scenario": "E-commerce",
+          "event_type": "purchase",
+          "context": {
+            "product_source": "meituan_takeout",
+            "product_id": "860",
+            "item_title": "2c3454-6f1663-8a2234-c21871-121306-402923-e61012-431608-272349",
+            "item_desc": "",
+            "item_price": 20.0,
+            "external_item_title": "",
+            "category_level1_name": "0",
+            "category_level2_name": "0",
+            "category_level3_name": "18",
+            "industry_level1_name": "Food Delivery",
+            "industry_level2_name": "0",
+            "industry_level3_name": "0"
+          },
+          "action": {
+            "type": "purchase",
+            "is_pay": true,
+            "order_price_interval": "<29",
+            "order_amt": 20.0,
+            "item_cnt": 1
+          }
+        },
+        {
+          "event_id": "100068:14:0",
+          "source_record_id": "100068:14",
+          "action_index": 0,
+          "event_time": "2021-03-19T13:44:51",
+          "time_precision": "second",
+          "scenario": "E-commerce",
+          "event_type": "purchase",
+          "context": {
+            "product_source": "meituan_takeout",
+            "product_id": "3263",
+            "item_title": "af1654-df3491-893740-5f1782-b43550-121306-8d3794-16978-a53996-901869-713861-901015-0a2820-4a1218-ae2775-5a1952-ac854-8c2935-431608-272349",
+            "item_desc": "",
+            "item_price": 20.0,
+            "external_item_title": "",
+            "category_level1_name": "0",
+            "category_level2_name": "0",
+            "category_level3_name": "108",
+            "industry_level1_name": "Food Delivery",
+            "industry_level2_name": "0",
+            "industry_level3_name": "0"
+          },
+          "action": {
+            "type": "purchase",
+            "is_pay": true,
+            "order_price_interval": "<29",
+            "order_amt": 20.0,
+            "item_cnt": 1
+          }
+        },
+        {
+          "event_id": "100068:15:0",
+          "source_record_id": "100068:15",
+          "action_index": 0,
+          "event_time": "2021-03-20T10:37:06",
+          "time_precision": "second",
+          "scenario": "E-commerce",
+          "event_type": "click",
+          "context": {
+            "product_source": "meituan_takeout",
+            "product_id": "1285",
+            "item_title": "b43550-c22442-323291-c62143-87965-863895-0b4049-c21871-a93677-a23694-b43550-121306-402923-84752-431608-272349",
+            "item_desc": "",
+            "item_price": 42.5,
+            "external_item_title": "",
+            "category_level1_name": "0",
+            "category_level2_name": "0",
+            "category_level3_name": "15",
+            "industry_level1_name": "Food Delivery",
+            "industry_level2_name": "0",
+            "industry_level3_name": "0"
+          },
+          "action": {
+            "type": "click",
+            "click_cnt": 1
+          }
+        },
+        {
+          "event_id": "100068:15:1",
+          "source_record_id": "100068:15",
+          "action_index": 1,
+          "event_time": "2021-03-20T10:37:36",
+          "time_precision": "second",
+          "scenario": "E-commerce",
+          "event_type": "click",
+          "context": {
+            "product_source": "meituan_takeout",
+            "product_id": "2699",
+            "item_title": "af1654-c3176-e01010-032517-8b2706-f81036-af1654-4a2318-121306-402923-8d3237-063761-431608-272349",
+            "item_desc": "",
+            "item_price": 42.5,
+            "external_item_title": "",
+            "category_level1_name": "0",
+            "category_level2_name": "1",
+            "category_level3_name": "33",
+            "industry_level1_name": "Food Delivery",
+            "industry_level2_name": "0",
+            "industry_level3_name": "1"
+          },
+          "action": {
+            "type": "click",
+            "click_cnt": 1
+          }
+        },
+        {
+          "event_id": "100068:15:2",
+          "source_record_id": "100068:15",
+          "action_index": 2,
+          "event_time": "2021-03-20T10:38:06",
+          "time_precision": "second",
+          "scenario": "E-commerce",
+          "event_type": "click",
+          "context": {
+            "product_source": "meituan_takeout",
+            "product_id": "549",
+            "item_title": "af1654-df3491-52727-1b3386-4a2318-931140-121306-38860-682644-501648-ca2010-431608-272349",
+            "item_desc": "",
+            "item_price": 42.5,
+            "external_item_title": "",
+            "category_level1_name": "0",
+            "category_level2_name": "1",
+            "category_level3_name": "33",
+            "industry_level1_name": "Food Delivery",
+            "industry_level2_name": "0",
+            "industry_level3_name": "1"
+          },
+          "action": {
+            "type": "click",
+            "click_cnt": 1
+          }
+        },
+        {
+          "event_id": "100068:15:3",
+          "source_record_id": "100068:15",
+          "action_index": 3,
+          "event_time": "2021-03-20T10:38:36",
+          "time_precision": "second",
+          "scenario": "E-commerce",
+          "event_type": "click",
+          "context": {
+            "product_source": "meituan_takeout",
+            "product_id": "938",
+            "item_title": "59550-814098-0c1478-af1654-4a2318-121306-dd1152-d556-8a2234-772477-4a2318-272349",
+            "item_desc": "",
+            "item_price": 42.5,
+            "external_item_title": "",
+            "category_level1_name": "0",
+            "category_level2_name": "1",
+            "category_level3_name": "33",
+            "industry_level1_name": "Food Delivery",
+            "industry_level2_name": "0",
+            "industry_level3_name": "1"
+          },
+          "action": {
+            "type": "click",
+            "click_cnt": 1
+          }
+        },
+        {
+          "event_id": "100068:15:4",
+          "source_record_id": "100068:15",
+          "action_index": 4,
+          "event_time": "2021-03-20T10:39:06",
+          "time_precision": "second",
+          "scenario": "E-commerce",
+          "event_type": "click",
+          "context": {
+            "product_source": "meituan_takeout",
+            "product_id": "2253",
+            "item_title": "942726-0b2849-af1654-6b2044-121306-342036-cd3847-652630-431608-272349",
+            "item_desc": "",
+            "item_price": 42.5,
+            "external_item_title": "",
+            "category_level1_name": "0",
+            "category_level2_name": "1",
+            "category_level3_name": "33",
+            "industry_level1_name": "Food Delivery",
+            "industry_level2_name": "0",
+            "industry_level3_name": "1"
+          },
+          "action": {
+            "type": "click",
+            "click_cnt": 1
+          }
+        },
+        {
+          "event_id": "100068:15:5",
+          "source_record_id": "100068:15",
+          "action_index": 5,
+          "event_time": "2021-03-20T10:39:36",
+          "time_precision": "second",
+          "scenario": "E-commerce",
+          "event_type": "click",
+          "context": {
+            "product_source": "meituan_takeout",
+            "product_id": "2699",
+            "item_title": "af1654-c3176-e01010-032517-8b2706-f81036-af1654-4a2318-121306-402923-8d3237-063761-431608-272349",
+            "item_desc": "",
+            "item_price": 42.5,
+            "external_item_title": "",
+            "category_level1_name": "0",
+            "category_level2_name": "1",
+            "category_level3_name": "33",
+            "industry_level1_name": "Food Delivery",
+            "industry_level2_name": "0",
+            "industry_level3_name": "1"
+          },
+          "action": {
+            "type": "click",
+            "click_cnt": 1
+          }
+        },
+        {
+          "event_id": "100068:15:6",
+          "source_record_id": "100068:15",
+          "action_index": 6,
+          "event_time": "2021-03-20T10:40:06",
+          "time_precision": "second",
+          "scenario": "E-commerce",
+          "event_type": "click",
+          "context": {
+            "product_source": "meituan_takeout",
+            "product_id": "2408",
+            "item_title": "9067-4b1486-023798-af1654-121306-af1654-4a2318-032517-8a2234-c23605-6b3322-b2193-fc3373-032517-051683-353977-431608-272349",
+            "item_desc": "",
+            "item_price": 42.5,
+            "external_item_title": "",
+            "category_level1_name": "0",
+            "category_level2_name": "1",
+            "category_level3_name": "13",
+            "industry_level1_name": "Food Delivery",
+            "industry_level2_name": "0",
+            "industry_level3_name": "1"
+          },
+          "action": {
+            "type": "click",
+            "click_cnt": 1
+          }
+        },
+        {
+          "event_id": "100068:15:7",
+          "source_record_id": "100068:15",
+          "action_index": 7,
+          "event_time": "2021-03-20T10:40:36",
+          "time_precision": "second",
+          "scenario": "E-commerce",
+          "event_type": "click",
+          "context": {
+            "product_source": "meituan_takeout",
+            "product_id": "549",
+            "item_title": "af1654-df3491-52727-1b3386-4a2318-931140-121306-38860-682644-501648-ca2010-431608-272349",
+            "item_desc": "",
+            "item_price": 42.5,
+            "external_item_title": "",
+            "category_level1_name": "0",
+            "category_level2_name": "1",
+            "category_level3_name": "33",
+            "industry_level1_name": "Food Delivery",
+            "industry_level2_name": "0",
+            "industry_level3_name": "1"
+          },
+          "action": {
+            "type": "click",
+            "click_cnt": 1
+          }
+        },
+        {
+          "event_id": "100068:15:8",
+          "source_record_id": "100068:15",
+          "action_index": 8,
+          "event_time": "2021-03-20T10:41:06",
+          "time_precision": "second",
+          "scenario": "E-commerce",
+          "event_type": "click",
+          "context": {
+            "product_source": "meituan_takeout",
+            "product_id": "3779",
+            "item_title": "a22383-af1654-8a2234-4a2318-931140",
+            "item_desc": "",
+            "item_price": 42.5,
+            "external_item_title": "",
+            "category_level1_name": "0",
+            "category_level2_name": "1",
+            "category_level3_name": "33",
+            "industry_level1_name": "Food Delivery",
+            "industry_level2_name": "0",
+            "industry_level3_name": "1"
+          },
+          "action": {
+            "type": "click",
+            "click_cnt": 1
+          }
+        },
+        {
+          "event_id": "100068:15:9",
+          "source_record_id": "100068:15",
+          "action_index": 9,
+          "event_time": "2021-03-20T10:41:36",
+          "time_precision": "second",
+          "scenario": "E-commerce",
+          "event_type": "click",
+          "context": {
+            "product_source": "meituan_takeout",
+            "product_id": "2699",
+            "item_title": "af1654-c3176-e01010-032517-8b2706-f81036-af1654-4a2318-121306-402923-8d3237-063761-431608-272349",
+            "item_desc": "",
+            "item_price": 42.5,
+            "external_item_title": "",
+            "category_level1_name": "0",
+            "category_level2_name": "1",
+            "category_level3_name": "33",
+            "industry_level1_name": "Food Delivery",
+            "industry_level2_name": "0",
+            "industry_level3_name": "1"
+          },
+          "action": {
+            "type": "click",
+            "click_cnt": 1
+          }
+        },
+        {
+          "event_id": "100068:15:10",
+          "source_record_id": "100068:15",
+          "action_index": 10,
+          "event_time": "2021-03-20T10:42:06",
+          "time_precision": "second",
+          "scenario": "E-commerce",
+          "event_type": "click",
+          "context": {
+            "product_source": "meituan_takeout",
+            "product_id": "390",
+            "item_title": "9067-4b1486-023798-af1654-121306-af1654-4a2318-032517-8a2234-c23605-6b3322-b2193-fc3373-032517-b3244-8f2156-713861-431608-272349",
+            "item_desc": "",
+            "item_price": 42.5,
+            "external_item_title": "",
+            "category_level1_name": "0",
+            "category_level2_name": "1",
+            "category_level3_name": "13",
+            "industry_level1_name": "Food Delivery",
+            "industry_level2_name": "0",
+            "industry_level3_name": "1"
+          },
+          "action": {
+            "type": "click",
+            "click_cnt": 1
+          }
+        },
+        {
+          "event_id": "100068:15:11",
+          "source_record_id": "100068:15",
+          "action_index": 11,
+          "event_time": "2021-03-20T10:42:36",
+          "time_precision": "second",
+          "scenario": "E-commerce",
+          "event_type": "click",
+          "context": {
+            "product_source": "meituan_takeout",
+            "product_id": "2216",
+            "item_title": "af1654-f82023-323291-2b3552-e33591",
+            "item_desc": "",
+            "item_price": 42.5,
+            "external_item_title": "",
+            "category_level1_name": "0",
+            "category_level2_name": "1",
+            "category_level3_name": "33",
+            "industry_level1_name": "Food Delivery",
+            "industry_level2_name": "0",
+            "industry_level3_name": "1"
+          },
+          "action": {
+            "type": "click",
+            "click_cnt": 1
+          }
+        },
+        {
+          "event_id": "100068:15:12",
+          "source_record_id": "100068:15",
+          "action_index": 12,
+          "event_time": "2021-03-20T10:43:06",
+          "time_precision": "second",
+          "scenario": "E-commerce",
+          "event_type": "click",
+          "context": {
+            "product_source": "meituan_takeout",
+            "product_id": "2408",
+            "item_title": "9067-4b1486-023798-af1654-121306-af1654-4a2318-032517-8a2234-c23605-6b3322-b2193-fc3373-032517-051683-353977-431608-272349",
+            "item_desc": "",
+            "item_price": 42.5,
+            "external_item_title": "",
+            "category_level1_name": "0",
+            "category_level2_name": "1",
+            "category_level3_name": "13",
+            "industry_level1_name": "Food Delivery",
+            "industry_level2_name": "0",
+            "industry_level3_name": "1"
+          },
+          "action": {
+            "type": "click",
+            "click_cnt": 1
+          }
+        },
+        {
+          "event_id": "100068:15:13",
+          "source_record_id": "100068:15",
+          "action_index": 13,
+          "event_time": "2021-03-20T10:43:36",
+          "time_precision": "second",
+          "scenario": "E-commerce",
+          "event_type": "click",
+          "context": {
+            "product_source": "meituan_takeout",
+            "product_id": "3263",
+            "item_title": "af1654-df3491-893740-5f1782-b43550-121306-8d3794-16978-a53996-901869-713861-901015-0a2820-4a1218-ae2775-5a1952-ac854-8c2935-431608-272349",
+            "item_desc": "",
+            "item_price": 42.5,
+            "external_item_title": "",
+            "category_level1_name": "0",
+            "category_level2_name": "0",
+            "category_level3_name": "108",
+            "industry_level1_name": "Food Delivery",
+            "industry_level2_name": "0",
+            "industry_level3_name": "0"
+          },
+          "action": {
+            "type": "click",
+            "click_cnt": 1
+          }
+        },
+        {
+          "event_id": "100068:15:14",
+          "source_record_id": "100068:15",
+          "action_index": 14,
+          "event_time": "2021-03-20T10:44:06",
+          "time_precision": "second",
+          "scenario": "E-commerce",
+          "event_type": "click",
+          "context": {
+            "product_source": "meituan_takeout",
+            "product_id": "2699",
+            "item_title": "af1654-c3176-e01010-032517-8b2706-f81036-af1654-4a2318-121306-402923-8d3237-063761-431608-272349",
+            "item_desc": "",
+            "item_price": 42.5,
+            "external_item_title": "",
+            "category_level1_name": "0",
+            "category_level2_name": "1",
+            "category_level3_name": "33",
+            "industry_level1_name": "Food Delivery",
+            "industry_level2_name": "0",
+            "industry_level3_name": "1"
+          },
+          "action": {
+            "type": "click",
+            "click_cnt": 1
+          }
+        },
+        {
+          "event_id": "100068:15:15",
+          "source_record_id": "100068:15",
+          "action_index": 15,
+          "event_time": "2021-03-20T10:44:36",
+          "time_precision": "second",
+          "scenario": "E-commerce",
+          "event_type": "purchase",
+          "context": {
+            "product_source": "meituan_takeout",
+            "product_id": "2049",
+            "item_title": "342036-af1654-7c3586-311279",
+            "item_desc": "",
+            "item_price": 42.5,
+            "external_item_title": "",
+            "category_level1_name": "0",
+            "category_level2_name": "1",
+            "category_level3_name": "33",
+            "industry_level1_name": "Food Delivery",
+            "industry_level2_name": "0",
+            "industry_level3_name": "1"
+          },
+          "action": {
+            "type": "purchase",
+            "is_pay": true,
+            "order_price_interval": "[36,49)",
+            "order_amt": 42.5,
+            "item_cnt": 1
+          }
+        }
+      ]
+    }
+  },
+  {
+    "sample_id": "100069:2021-03-21T23:59:59:closed",
+    "input": {
+      "user_id": "100069",
+      "cutoff_time": "2021-03-21T23:59:59",
+      "cutoff_inclusive": true,
+      "timezone": null,
+      "history_order_known": true,
+      "history_truncated": true,
+      "history_group_truncated": false,
+      "profile": {
+        "as_of_time": "2021-03-21T23:59:59",
+        "active_days_30d": 5,
+        "event_count_30d": 40,
+        "e_commerce_event_count_30d": 40,
+        "video_browsing_event_count_30d": 0,
+        "live_streaming_event_count_30d": 0,
+        "advertisement_event_count_30d": 0,
+        "search_behavior_event_count_30d": 0,
+        "customer_service_event_count_30d": 0
+      },
+      "history": [
+        {
+          "event_id": "100069:1:9",
+          "source_record_id": "100069:1",
+          "action_index": 9,
+          "event_time": "2021-03-03T17:01:31",
+          "time_precision": "second",
+          "scenario": "E-commerce",
+          "event_type": "click",
+          "context": {
+            "product_source": "meituan_takeout",
+            "product_id": "629",
+            "item_title": "911529-8a2234-fd3252-6e4044-d71618-121306-5e2725-a21596-063761-431608-272349",
+            "item_desc": "",
+            "item_price": 20.0,
+            "external_item_title": "",
+            "category_level1_name": "0",
+            "category_level2_name": "0",
+            "category_level3_name": "38",
+            "industry_level1_name": "Food Delivery",
+            "industry_level2_name": "0",
+            "industry_level3_name": "0"
+          },
+          "action": {
+            "type": "click",
+            "click_cnt": 1
+          }
+        },
+        {
+          "event_id": "100069:1:10",
+          "source_record_id": "100069:1",
+          "action_index": 10,
+          "event_time": "2021-03-03T17:02:01",
+          "time_precision": "second",
+          "scenario": "E-commerce",
+          "event_type": "click",
+          "context": {
+            "product_source": "meituan_takeout",
+            "product_id": "1397",
+            "item_title": "50882-063761-713861-d32365-633554-133334-121306-a8269-65804-e21602-431608-272349",
+            "item_desc": "",
+            "item_price": 20.0,
+            "external_item_title": "",
+            "category_level1_name": "0",
+            "category_level2_name": "0",
+            "category_level3_name": "12",
+            "industry_level1_name": "Food Delivery",
+            "industry_level2_name": "0",
+            "industry_level3_name": "0"
+          },
+          "action": {
+            "type": "click",
+            "click_cnt": 1
+          }
+        },
+        {
+          "event_id": "100069:1:11",
+          "source_record_id": "100069:1",
+          "action_index": 11,
+          "event_time": "2021-03-03T17:02:31",
+          "time_precision": "second",
+          "scenario": "E-commerce",
+          "event_type": "click",
+          "context": {
+            "product_source": "meituan_takeout",
+            "product_id": "629",
+            "item_title": "911529-8a2234-fd3252-6e4044-d71618-121306-5e2725-a21596-063761-431608-272349",
+            "item_desc": "",
+            "item_price": 20.0,
+            "external_item_title": "",
+            "category_level1_name": "0",
+            "category_level2_name": "0",
+            "category_level3_name": "38",
+            "industry_level1_name": "Food Delivery",
+            "industry_level2_name": "0",
+            "industry_level3_name": "0"
+          },
+          "action": {
+            "type": "click",
+            "click_cnt": 1
+          }
+        },
+        {
+          "event_id": "100069:1:12",
+          "source_record_id": "100069:1",
+          "action_index": 12,
+          "event_time": "2021-03-03T17:03:01",
+          "time_precision": "second",
+          "scenario": "E-commerce",
+          "event_type": "purchase",
+          "context": {
+            "product_source": "meituan_takeout",
+            "product_id": "1798",
+            "item_title": "8a2234-a22084-2f2756-5f38-30514-c34009-641271-c62143-a23694-de2424-d71618-121306-5e2725-a21596-063761-431608-272349",
+            "item_desc": "",
+            "item_price": 20.0,
+            "external_item_title": "",
+            "category_level1_name": "0",
+            "category_level2_name": "7",
+            "category_level3_name": "37",
+            "industry_level1_name": "Food Delivery",
+            "industry_level2_name": "0",
+            "industry_level3_name": "7"
+          },
+          "action": {
+            "type": "purchase",
+            "is_pay": true,
+            "order_price_interval": "<29",
+            "order_amt": 20.0,
+            "item_cnt": 1
+          }
+        },
+        {
+          "event_id": "100069:2:0",
+          "source_record_id": "100069:2",
+          "action_index": 0,
+          "event_time": "2021-03-11T15:16:45",
+          "time_precision": "second",
+          "scenario": "E-commerce",
+          "event_type": "click",
+          "context": {
+            "product_source": "meituan_takeout",
+            "product_id": "633",
+            "item_title": "36950-5b1293-5f38-30514-de2424-791987-c53116-4b2403-d72063-121306-c34009-641271-272349",
+            "item_desc": "",
+            "item_price": 20.0,
+            "external_item_title": "",
+            "category_level1_name": "0",
+            "category_level2_name": "7",
+            "category_level3_name": "81",
+            "industry_level1_name": "Food Delivery",
+            "industry_level2_name": "0",
+            "industry_level3_name": "7"
+          },
+          "action": {
+            "type": "click",
+            "click_cnt": 1
+          }
+        },
+        {
+          "event_id": "100069:2:1",
+          "source_record_id": "100069:2",
+          "action_index": 1,
+          "event_time": "2021-03-11T15:17:15",
+          "time_precision": "second",
+          "scenario": "E-commerce",
+          "event_type": "click",
+          "context": {
+            "product_source": "meituan_takeout",
+            "product_id": "633",
+            "item_title": "36950-5b1293-5f38-30514-de2424-791987-c53116-4b2403-d72063-121306-c34009-641271-272349",
+            "item_desc": "",
+            "item_price": 20.0,
+            "external_item_title": "",
+            "category_level1_name": "0",
+            "category_level2_name": "7",
+            "category_level3_name": "81",
+            "industry_level1_name": "Food Delivery",
+            "industry_level2_name": "0",
+            "industry_level3_name": "7"
+          },
+          "action": {
+            "type": "click",
+            "click_cnt": 1
+          }
+        },
+        {
+          "event_id": "100069:2:2",
+          "source_record_id": "100069:2",
+          "action_index": 2,
+          "event_time": "2021-03-11T15:17:45",
+          "time_precision": "second",
+          "scenario": "E-commerce",
+          "event_type": "click",
+          "context": {
+            "product_source": "meituan_takeout",
+            "product_id": "1608",
+            "item_title": "b2193-d0128-753219-38860-cb1524-fe1148-5b1293",
+            "item_desc": "",
+            "item_price": 20.0,
+            "external_item_title": "",
+            "category_level1_name": "0",
+            "category_level2_name": "4",
+            "category_level3_name": "63",
+            "industry_level1_name": "Food Delivery",
+            "industry_level2_name": "0",
+            "industry_level3_name": "4"
+          },
+          "action": {
+            "type": "click",
+            "click_cnt": 1
+          }
+        },
+        {
+          "event_id": "100069:2:3",
+          "source_record_id": "100069:2",
+          "action_index": 3,
+          "event_time": "2021-03-11T15:18:15",
+          "time_precision": "second",
+          "scenario": "E-commerce",
+          "event_type": "click",
+          "context": {
+            "product_source": "meituan_takeout",
+            "product_id": "1608",
+            "item_title": "b2193-d0128-753219-38860-cb1524-fe1148-5b1293",
+            "item_desc": "",
+            "item_price": 20.0,
+            "external_item_title": "",
+            "category_level1_name": "0",
+            "category_level2_name": "4",
+            "category_level3_name": "63",
+            "industry_level1_name": "Food Delivery",
+            "industry_level2_name": "0",
+            "industry_level3_name": "4"
+          },
+          "action": {
+            "type": "click",
+            "click_cnt": 1
+          }
+        },
+        {
+          "event_id": "100069:2:4",
+          "source_record_id": "100069:2",
+          "action_index": 4,
+          "event_time": "2021-03-11T15:18:45",
+          "time_precision": "second",
+          "scenario": "E-commerce",
+          "event_type": "click",
+          "context": {
+            "product_source": "meituan_takeout",
+            "product_id": "2190",
+            "item_title": "b92734-a22084-bd3159-502358-24424-f63938-641271-121306-8d3794-9d1564-901869-713861-901015-a93922-d0128-1d553-5a1952-ac854-8c2935-431608-272349",
+            "item_desc": "",
+            "item_price": 20.0,
+            "external_item_title": "",
+            "category_level1_name": "0",
+            "category_level2_name": "7",
+            "category_level3_name": "37",
+            "industry_level1_name": "Food Delivery",
+            "industry_level2_name": "0",
+            "industry_level3_name": "7"
+          },
+          "action": {
+            "type": "click",
+            "click_cnt": 1
+          }
+        },
+        {
+          "event_id": "100069:2:5",
+          "source_record_id": "100069:2",
+          "action_index": 5,
+          "event_time": "2021-03-11T15:19:15",
+          "time_precision": "second",
+          "scenario": "E-commerce",
+          "event_type": "click",
+          "context": {
+            "product_source": "meituan_takeout",
+            "product_id": "830",
+            "item_title": "422539-9d1564-75935-87107-121306-102277-9f1640-6f3045-5e2725-431608-272349",
+            "item_desc": "",
+            "item_price": 20.0,
+            "external_item_title": "",
+            "category_level1_name": "2",
+            "category_level2_name": "6",
+            "category_level3_name": "unknown",
+            "industry_level1_name": "Food Delivery",
+            "industry_level2_name": "2",
+            "industry_level3_name": "6"
+          },
+          "action": {
+            "type": "click",
+            "click_cnt": 1
+          }
+        },
+        {
+          "event_id": "100069:2:6",
+          "source_record_id": "100069:2",
+          "action_index": 6,
+          "event_time": "2021-03-11T15:19:45",
+          "time_precision": "second",
+          "scenario": "E-commerce",
+          "event_type": "click",
+          "context": {
+            "product_source": "meituan_takeout",
+            "product_id": "1401",
+            "item_title": "c34009-641271-be2895-5f38-30514-de2424-121306-102277-9f1640-402923-e22943-431608-272349",
+            "item_desc": "",
+            "item_price": 20.0,
+            "external_item_title": "",
+            "category_level1_name": "0",
+            "category_level2_name": "7",
+            "category_level3_name": "37",
+            "industry_level1_name": "Food Delivery",
+            "industry_level2_name": "0",
+            "industry_level3_name": "7"
+          },
+          "action": {
+            "type": "click",
+            "click_cnt": 1
+          }
+        },
+        {
+          "event_id": "100069:2:7",
+          "source_record_id": "100069:2",
+          "action_index": 7,
+          "event_time": "2021-03-11T15:20:15",
+          "time_precision": "second",
+          "scenario": "E-commerce",
+          "event_type": "click",
+          "context": {
+            "product_source": "meituan_takeout",
+            "product_id": "618",
+            "item_title": "9c1694-cc34-193506-c62143-db505-c53116-2c1019-252735-121306-102277-9f1640-402923-e22943-431608-272349",
+            "item_desc": "",
+            "item_price": 20.0,
+            "external_item_title": "",
+            "category_level1_name": "0",
+            "category_level2_name": "7",
+            "category_level3_name": "49",
+            "industry_level1_name": "Food Delivery",
+            "industry_level2_name": "0",
+            "industry_level3_name": "7"
+          },
+          "action": {
+            "type": "click",
+            "click_cnt": 1
+          }
+        },
+        {
+          "event_id": "100069:2:8",
+          "source_record_id": "100069:2",
+          "action_index": 8,
+          "event_time": "2021-03-11T15:20:45",
+          "time_precision": "second",
+          "scenario": "E-commerce",
+          "event_type": "click",
+          "context": {
+            "product_source": "meituan_takeout",
+            "product_id": "2668",
+            "item_title": "24424-744096-61773-b92734-a22084-bd3159-502358-24424-c34009-641271-121306-79217-cd3847-e21602-431608-272349",
+            "item_desc": "",
+            "item_price": 20.0,
+            "external_item_title": "",
+            "category_level1_name": "0",
+            "category_level2_name": "7",
+            "category_level3_name": "37",
+            "industry_level1_name": "Food Delivery",
+            "industry_level2_name": "0",
+            "industry_level3_name": "7"
+          },
+          "action": {
+            "type": "click",
+            "click_cnt": 1
+          }
+        },
+        {
+          "event_id": "100069:2:9",
+          "source_record_id": "100069:2",
+          "action_index": 9,
+          "event_time": "2021-03-11T15:21:15",
+          "time_precision": "second",
+          "scenario": "E-commerce",
+          "event_type": "click",
+          "context": {
+            "product_source": "meituan_takeout",
+            "product_id": "672",
+            "item_title": "243077-f83517-391919-243077-193506-ae786-121306-102277-9f1640-5e2725-a21596-063761-72226-231660-d0128-431608-272349",
+            "item_desc": "",
+            "item_price": 20.0,
+            "external_item_title": "",
+            "category_level1_name": "0",
+            "category_level2_name": "0",
+            "category_level3_name": "0",
+            "industry_level1_name": "Food Delivery",
+            "industry_level2_name": "0",
+            "industry_level3_name": "0"
+          },
+          "action": {
+            "type": "click",
+            "click_cnt": 1
+          }
+        },
+        {
+          "event_id": "100069:2:10",
+          "source_record_id": "100069:2",
+          "action_index": 10,
+          "event_time": "2021-03-11T15:21:45",
+          "time_precision": "second",
+          "scenario": "E-commerce",
+          "event_type": "click",
+          "context": {
+            "product_source": "meituan_takeout",
+            "product_id": "440",
+            "item_title": "9f1640-ce4073-a22084-c34009-121725-121306-402923-e22943-ac854-cc34-d0128-431608-272349",
+            "item_desc": "",
+            "item_price": 20.0,
+            "external_item_title": "",
+            "category_level1_name": "0",
+            "category_level2_name": "7",
+            "category_level3_name": "37",
+            "industry_level1_name": "Food Delivery",
+            "industry_level2_name": "0",
+            "industry_level3_name": "7"
+          },
+          "action": {
+            "type": "click",
+            "click_cnt": 1
+          }
+        },
+        {
+          "event_id": "100069:2:11",
+          "source_record_id": "100069:2",
+          "action_index": 11,
+          "event_time": "2021-03-11T15:22:15",
+          "time_precision": "second",
+          "scenario": "E-commerce",
+          "event_type": "click",
+          "context": {
+            "product_source": "meituan_takeout",
+            "product_id": "432",
+            "item_title": "102277-9f1640-98742-b84059-fa2505-7e2081-9f2562",
+            "item_desc": "",
+            "item_price": 20.0,
+            "external_item_title": "",
+            "category_level1_name": "0",
+            "category_level2_name": "1",
+            "category_level3_name": "13",
+            "industry_level1_name": "Food Delivery",
+            "industry_level2_name": "0",
+            "industry_level3_name": "1"
+          },
+          "action": {
+            "type": "click",
+            "click_cnt": 1
+          }
+        },
+        {
+          "event_id": "100069:2:12",
+          "source_record_id": "100069:2",
+          "action_index": 12,
+          "event_time": "2021-03-11T15:22:45",
+          "time_precision": "second",
+          "scenario": "E-commerce",
+          "event_type": "click",
+          "context": {
+            "product_source": "meituan_takeout",
+            "product_id": "175",
+            "item_title": "7b3565-d3331-e93887-613072-6d930-ae786-121306-5e2725-72226-923691-361409-431608-272349",
+            "item_desc": "",
+            "item_price": 20.0,
+            "external_item_title": "",
+            "category_level1_name": "0",
+            "category_level2_name": "0",
+            "category_level3_name": "4",
+            "industry_level1_name": "Food Delivery",
+            "industry_level2_name": "0",
+            "industry_level3_name": "0"
+          },
+          "action": {
+            "type": "click",
+            "click_cnt": 1
+          }
+        },
+        {
+          "event_id": "100069:2:13",
+          "source_record_id": "100069:2",
+          "action_index": 13,
+          "event_time": "2021-03-11T15:23:15",
+          "time_precision": "second",
+          "scenario": "E-commerce",
+          "event_type": "click",
+          "context": {
+            "product_source": "meituan_takeout",
+            "product_id": "1597",
+            "item_title": "e21602-633554-11949-361622-121306-402923-5f38-1f2314-192896-652408-431608-272349",
+            "item_desc": "",
+            "item_price": 20.0,
+            "external_item_title": "",
+            "category_level1_name": "0",
+            "category_level2_name": "7",
+            "category_level3_name": "37",
+            "industry_level1_name": "Food Delivery",
+            "industry_level2_name": "0",
+            "industry_level3_name": "7"
+          },
+          "action": {
+            "type": "click",
+            "click_cnt": 1
+          }
+        },
+        {
+          "event_id": "100069:2:14",
+          "source_record_id": "100069:2",
+          "action_index": 14,
+          "event_time": "2021-03-11T15:23:45",
+          "time_precision": "second",
+          "scenario": "E-commerce",
+          "event_type": "click",
+          "context": {
+            "product_source": "meituan_takeout",
+            "product_id": "175",
+            "item_title": "7b3565-d3331-e93887-613072-6d930-ae786-121306-5e2725-72226-923691-361409-431608-272349",
+            "item_desc": "",
+            "item_price": 20.0,
+            "external_item_title": "",
+            "category_level1_name": "0",
+            "category_level2_name": "0",
+            "category_level3_name": "4",
+            "industry_level1_name": "Food Delivery",
+            "industry_level2_name": "0",
+            "industry_level3_name": "0"
+          },
+          "action": {
+            "type": "click",
+            "click_cnt": 1
+          }
+        },
+        {
+          "event_id": "100069:2:15",
+          "source_record_id": "100069:2",
+          "action_index": 15,
+          "event_time": "2021-03-11T15:24:15",
+          "time_precision": "second",
+          "scenario": "E-commerce",
+          "event_type": "click",
+          "context": {
+            "product_source": "meituan_takeout",
+            "product_id": "6293",
+            "item_title": "fc3037-9f1640-de2424-c53116-121306-8a2234-5f730-c62143-8a2234-342412-981676-272349",
+            "item_desc": "",
+            "item_price": 20.0,
+            "external_item_title": "",
+            "category_level1_name": "0",
+            "category_level2_name": "1",
+            "category_level3_name": "32",
+            "industry_level1_name": "Food Delivery",
+            "industry_level2_name": "0",
+            "industry_level3_name": "1"
+          },
+          "action": {
+            "type": "click",
+            "click_cnt": 1
+          }
+        },
+        {
+          "event_id": "100069:2:16",
+          "source_record_id": "100069:2",
+          "action_index": 16,
+          "event_time": "2021-03-11T15:24:45",
+          "time_precision": "second",
+          "scenario": "E-commerce",
+          "event_type": "click",
+          "context": {
+            "product_source": "meituan_takeout",
+            "product_id": "1401",
+            "item_title": "c34009-641271-be2895-5f38-30514-de2424-121306-102277-9f1640-402923-e22943-431608-272349",
+            "item_desc": "",
+            "item_price": 20.0,
+            "external_item_title": "",
+            "category_level1_name": "0",
+            "category_level2_name": "7",
+            "category_level3_name": "37",
+            "industry_level1_name": "Food Delivery",
+            "industry_level2_name": "0",
+            "industry_level3_name": "7"
+          },
+          "action": {
+            "type": "click",
+            "click_cnt": 1
+          }
+        },
+        {
+          "event_id": "100069:2:17",
+          "source_record_id": "100069:2",
+          "action_index": 17,
+          "event_time": "2021-03-11T15:25:15",
+          "time_precision": "second",
+          "scenario": "E-commerce",
+          "event_type": "click",
+          "context": {
+            "product_source": "meituan_takeout",
+            "product_id": "1798",
+            "item_title": "8a2234-a22084-2f2756-5f38-30514-c34009-641271-c62143-a23694-de2424-d71618-121306-5e2725-a21596-063761-431608-272349",
+            "item_desc": "",
+            "item_price": 20.0,
+            "external_item_title": "",
+            "category_level1_name": "0",
+            "category_level2_name": "7",
+            "category_level3_name": "37",
+            "industry_level1_name": "Food Delivery",
+            "industry_level2_name": "0",
+            "industry_level3_name": "7"
+          },
+          "action": {
+            "type": "click",
+            "click_cnt": 1
+          }
+        },
+        {
+          "event_id": "100069:2:18",
+          "source_record_id": "100069:2",
+          "action_index": 18,
+          "event_time": "2021-03-11T15:25:45",
+          "time_precision": "second",
+          "scenario": "E-commerce",
+          "event_type": "purchase",
+          "context": {
+            "product_source": "meituan_takeout",
+            "product_id": "1112",
+            "item_title": "102277-9f1640-6f178-323291-3b4047-121306-5e2725-a21596-063761-99789-e22943-39147-d0128-431608-272349",
+            "item_desc": "",
+            "item_price": 20.0,
+            "external_item_title": "",
+            "category_level1_name": "1",
+            "category_level2_name": "15",
+            "category_level3_name": "unknown",
+            "industry_level1_name": "Food Delivery",
+            "industry_level2_name": "1",
+            "industry_level3_name": "15"
+          },
+          "action": {
+            "type": "purchase",
+            "is_pay": true,
+            "order_price_interval": "<29",
+            "order_amt": 20.0,
+            "item_cnt": 1
+          }
+        },
+        {
+          "event_id": "100069:3:0",
+          "source_record_id": "100069:3",
+          "action_index": 0,
+          "event_time": "2021-03-14T16:49:27",
+          "time_precision": "second",
+          "scenario": "E-commerce",
+          "event_type": "purchase",
+          "context": {
+            "product_source": "meituan_takeout",
+            "product_id": "1798",
+            "item_title": "8a2234-a22084-2f2756-5f38-30514-c34009-641271-c62143-a23694-de2424-d71618-121306-5e2725-a21596-063761-431608-272349",
+            "item_desc": "",
+            "item_price": 32.5,
+            "external_item_title": "",
+            "category_level1_name": "0",
+            "category_level2_name": "7",
+            "category_level3_name": "37",
+            "industry_level1_name": "Food Delivery",
+            "industry_level2_name": "0",
+            "industry_level3_name": "7"
+          },
+          "action": {
+            "type": "purchase",
+            "is_pay": true,
+            "order_price_interval": "[29,36)",
+            "order_amt": 32.5,
+            "item_cnt": 1
+          }
+        },
+        {
+          "event_id": "100069:4:0",
+          "source_record_id": "100069:4",
+          "action_index": 0,
+          "event_time": "2021-03-18T13:11:06",
+          "time_precision": "second",
+          "scenario": "E-commerce",
+          "event_type": "click",
+          "context": {
+            "product_source": "meituan_takeout",
+            "product_id": "175",
+            "item_title": "7b3565-d3331-e93887-613072-6d930-ae786-121306-5e2725-72226-923691-361409-431608-272349",
+            "item_desc": "",
+            "item_price": 20.0,
+            "external_item_title": "",
+            "category_level1_name": "0",
+            "category_level2_name": "0",
+            "category_level3_name": "4",
+            "industry_level1_name": "Food Delivery",
+            "industry_level2_name": "0",
+            "industry_level3_name": "0"
+          },
+          "action": {
+            "type": "click",
+            "click_cnt": 1
+          }
+        },
+        {
+          "event_id": "100069:4:1",
+          "source_record_id": "100069:4",
+          "action_index": 1,
+          "event_time": "2021-03-18T13:11:36",
+          "time_precision": "second",
+          "scenario": "E-commerce",
+          "event_type": "click",
+          "context": {
+            "product_source": "meituan_takeout",
+            "product_id": "815",
+            "item_title": "243077-f83517-391919-243077-193506-ae786-121306-102277-9f1640-6f3045-5e2725-871632-431608-272349",
+            "item_desc": "",
+            "item_price": 20.0,
+            "external_item_title": "",
+            "category_level1_name": "0",
+            "category_level2_name": "0",
+            "category_level3_name": "0",
+            "industry_level1_name": "Food Delivery",
+            "industry_level2_name": "0",
+            "industry_level3_name": "0"
+          },
+          "action": {
+            "type": "click",
+            "click_cnt": 1
+          }
+        },
+        {
+          "event_id": "100069:4:2",
+          "source_record_id": "100069:4",
+          "action_index": 2,
+          "event_time": "2021-03-18T13:12:06",
+          "time_precision": "second",
+          "scenario": "E-commerce",
+          "event_type": "click",
+          "context": {
+            "product_source": "meituan_takeout",
+            "product_id": "1885",
+            "item_title": "ce4073-5d2360-061243-121306-f1890-f83905-ff2187-431608-272349",
+            "item_desc": "",
+            "item_price": 20.0,
+            "external_item_title": "",
+            "category_level1_name": "0",
+            "category_level2_name": "1",
+            "category_level3_name": "2",
+            "industry_level1_name": "Food Delivery",
+            "industry_level2_name": "0",
+            "industry_level3_name": "1"
+          },
+          "action": {
+            "type": "click",
+            "click_cnt": 1
+          }
+        },
+        {
+          "event_id": "100069:4:3",
+          "source_record_id": "100069:4",
+          "action_index": 3,
+          "event_time": "2021-03-18T13:12:36",
+          "time_precision": "second",
+          "scenario": "E-commerce",
+          "event_type": "click",
+          "context": {
+            "product_source": "meituan_takeout",
+            "product_id": "1401",
+            "item_title": "c34009-641271-be2895-5f38-30514-de2424-121306-102277-9f1640-402923-e22943-431608-272349",
+            "item_desc": "",
+            "item_price": 20.0,
+            "external_item_title": "",
+            "category_level1_name": "0",
+            "category_level2_name": "7",
+            "category_level3_name": "37",
+            "industry_level1_name": "Food Delivery",
+            "industry_level2_name": "0",
+            "industry_level3_name": "7"
+          },
+          "action": {
+            "type": "click",
+            "click_cnt": 1
+          }
+        },
+        {
+          "event_id": "100069:4:4",
+          "source_record_id": "100069:4",
+          "action_index": 4,
+          "event_time": "2021-03-18T13:13:06",
+          "time_precision": "second",
+          "scenario": "E-commerce",
+          "event_type": "click",
+          "context": {
+            "product_source": "meituan_takeout",
+            "product_id": "1487",
+            "item_title": "2b4091-7d1638-ab404-303211-c31718-d72063-121306-79217-cd3847-e21602-431608-272349",
+            "item_desc": "",
+            "item_price": 20.0,
+            "external_item_title": "",
+            "category_level1_name": "0",
+            "category_level2_name": "0",
+            "category_level3_name": "90",
+            "industry_level1_name": "Food Delivery",
+            "industry_level2_name": "0",
+            "industry_level3_name": "0"
+          },
+          "action": {
+            "type": "click",
+            "click_cnt": 1
+          }
+        },
+        {
+          "event_id": "100069:4:5",
+          "source_record_id": "100069:4",
+          "action_index": 5,
+          "event_time": "2021-03-18T13:13:36",
+          "time_precision": "second",
+          "scenario": "E-commerce",
+          "event_type": "purchase",
+          "context": {
+            "product_source": "meituan_takeout",
+            "product_id": "2092",
+            "item_title": "771437-063761-c62143-24424-b43550-be65-133334-121306-5e2725-a21596-063761-431608-272349",
+            "item_desc": "",
+            "item_price": 20.0,
+            "external_item_title": "",
+            "category_level1_name": "0",
+            "category_level2_name": "1",
+            "category_level3_name": "5",
+            "industry_level1_name": "Food Delivery",
+            "industry_level2_name": "0",
+            "industry_level3_name": "1"
+          },
+          "action": {
+            "type": "purchase",
+            "is_pay": true,
+            "order_price_interval": "<29",
+            "order_amt": 20.0,
+            "item_cnt": 1
+          }
+        }
+      ]
+    }
+  }
+]

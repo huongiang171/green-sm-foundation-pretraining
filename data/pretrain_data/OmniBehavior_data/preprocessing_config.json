@@ -1,0 +1,116 @@
+{
+  "schema_version": "omnibehavior_pretraining_v2",
+  "language": "en",
+  "timezone": null,
+  "max_history_events": 30,
+  "event_unit": "one raw action observation",
+  "profile_text_used": false,
+  "context_allowlist": {
+    "Advertisement": [
+      "product",
+      "industry_main",
+      "industry_sub",
+      "caption",
+      "ocr_text",
+      "asr_text"
+    ],
+    "Live Streaming": [
+      "live_category",
+      "live_title",
+      "is_shop_live",
+      "live_cover_content"
+    ],
+    "Video Browsing": [
+      "caption",
+      "photo_type",
+      "duration",
+      "ocr",
+      "asr"
+    ],
+    "E-commerce": [
+      "product_source",
+      "product_id",
+      "item_title",
+      "item_desc",
+      "item_price",
+      "external_item_title",
+      "category_level1_name",
+      "category_level2_name",
+      "category_level3_name",
+      "industry_level1_name",
+      "industry_level2_name",
+      "industry_level3_name"
+    ],
+    "Customer Service": [
+      "ticket_category",
+      "product_name",
+      "item_price",
+      "product_category_info"
+    ],
+    "Search Behavior": []
+  },
+  "scenario_profile_fields": {
+    "Advertisement": "advertisement_event_count_30d",
+    "Live Streaming": "live_streaming_event_count_30d",
+    "Video Browsing": "video_browsing_event_count_30d",
+    "E-commerce": "e_commerce_event_count_30d",
+    "Customer Service": "customer_service_event_count_30d",
+    "Search Behavior": "search_behavior_event_count_30d"
+  },
+  "profile_window": "(cutoff - 30 days, cutoff] in (eligibility_time, inclusive) coordinates",
+  "active_day_basis": "calendar date of source timestamp; counts observations including negative states",
+  "history_selection": "last 30 sorted by eligibility_time, eligibility_inclusive, source_record_index, action_index",
+  "snapshot_cadence": "one per eligibility coordinate; day closing precedes an exact midnight observation",
+  "splits": {
+    "start_inclusive": "2025-09-01T00:00:00",
+    "train_end_exclusive": "2025-11-01T00:00:00",
+    "validation_end_exclusive": "2025-11-16T00:00:00",
+    "test_end_exclusive": "2025-12-01T00:00:00",
+    "day_closing_at_boundary": "belongs to preceding split"
+  },
+  "compression": {
+    "codec": "zstd",
+    "level": 3,
+    "rows_per_write_batch": 4096
+  },
+  "training_targets_stored": false,
+  "mask_policy": null,
+  "vocabulary_fit": false,
+  "metadata_not_business_features": [
+    "sample_id",
+    "cutoff_time",
+    "cutoff_inclusive",
+    "timezone",
+    "as_of_time",
+    "history_order_known",
+    "history_truncated",
+    "history_group_truncated",
+    "event_id",
+    "source_record_id",
+    "source_record_index",
+    "action_index",
+    "source_action_count",
+    "eligibility_time",
+    "eligibility_inclusive",
+    "time_lower_bound",
+    "time_upper_bound",
+    "upper_bound_exclusive"
+  ],
+  "temporal_metadata": [
+    "event_time",
+    "time_precision",
+    "time_lower_bound",
+    "time_upper_bound",
+    "upper_bound_exclusive"
+  ],
+  "limitations": [
+    "Source timezone and actual log availability are unknown.",
+    "Date-only records are eligible only when the source day has ended.",
+    "Eligibility ordering does not establish actual order within overlapping intervals.",
+    "The last 30 observations may include a partial eligibility or source-record group.",
+    "Actions include negative and unknown states; action.type is not a success label.",
+    "Shared context and related fields require coordinated masking across source_record_id.",
+    "Next-action targets must be strictly ordered, excluded from input and constrained to their split.",
+    "No CVR definition or conversion attribution has been validated."
+  ]
+}

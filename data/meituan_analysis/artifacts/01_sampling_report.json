@@ -1,0 +1,10 @@
+{
+  "random_seed": 42,
+  "total_train_users": 200000,
+  "eligible_train_users_ge_3": 175486,
+  "sampled_pretrain_users": 20000,
+  "total_week4_users": 108739,
+  "warmstart_candidate_pool": 11436,
+  "sampled_downstream_users": 10000,
+  "downstream_is_subset_of_pretrain": true
+}

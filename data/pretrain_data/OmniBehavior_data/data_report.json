@@ -1,0 +1,1169 @@
+{
+  "raw_records": 804435,
+  "action_events": 891565,
+  "date_only_records": 3701,
+  "date_only_action_events": 6457,
+  "raw_records_by_scenario": {
+    "Advertisement": 3701,
+    "Live Streaming": 120859,
+    "Video Browsing": 659878,
+    "E-commerce": 12865,
+    "Customer Service": 1112,
+    "Search Behavior": 6020
+  },
+  "action_events_by_scenario": {
+    "Advertisement": 6457,
+    "Live Streaming": 151703,
+    "Video Browsing": 691039,
+    "E-commerce": 25730,
+    "Customer Service": 2224,
+    "Search Behavior": 14412
+  },
+  "action_events_by_type": {
+    "conversion": 3682,
+    "comment": 21443,
+    "watch": 781921,
+    "cart": 12865,
+    "purchase": 14023,
+    "dialogue": 1112,
+    "search": 6020,
+    "show": 6020,
+    "click": 2372,
+    "like": 25574,
+    "share": 2301,
+    "click_cart": 2352,
+    "follow": 4034,
+    "collect": 2908,
+    "download": 440,
+    "dislike": 1570,
+    "activation": 1124,
+    "unfollow": 144,
+    "send_gift": 1494,
+    "join_group": 142,
+    "submit": 15,
+    "report": 9
+  },
+  "context_field_coverage_per_raw_record": {
+    "Advertisement": {
+      "asr_text": {
+        "present": 3033,
+        "non_null": 1784,
+        "missing": 668,
+        "null": 1249,
+        "used_in_input": true
+      },
+      "caption": {
+        "present": 2840,
+        "non_null": 711,
+        "missing": 861,
+        "null": 2129,
+        "used_in_input": true
+      },
+      "collect_cnt": {
+        "present": 2352,
+        "non_null": 0,
+        "missing": 1349,
+        "null": 2352,
+        "used_in_input": false
+      },
+      "comment_cnt": {
+        "present": 2352,
+        "non_null": 0,
+        "missing": 1349,
+        "null": 2352,
+        "used_in_input": false
+      },
+      "complete_play_cnt": {
+        "present": 2352,
+        "non_null": 0,
+        "missing": 1349,
+        "null": 2352,
+        "used_in_input": false
+      },
+      "download_cnt": {
+        "present": 2352,
+        "non_null": 0,
+        "missing": 1349,
+        "null": 2352,
+        "used_in_input": false
+      },
+      "duration": {
+        "present": 2352,
+        "non_null": 0,
+        "missing": 1349,
+        "null": 2352,
+        "used_in_input": false
+      },
+      "fans_user_num": {
+        "present": 2352,
+        "non_null": 0,
+        "missing": 1349,
+        "null": 2352,
+        "used_in_input": false
+      },
+      "fans_user_num_op_range": {
+        "present": 2352,
+        "non_null": 0,
+        "missing": 1349,
+        "null": 2352,
+        "used_in_input": false
+      },
+      "follow_cnt": {
+        "present": 2352,
+        "non_null": 0,
+        "missing": 1349,
+        "null": 2352,
+        "used_in_input": false
+      },
+      "industry_main": {
+        "present": 3661,
+        "non_null": 3653,
+        "missing": 40,
+        "null": 8,
+        "used_in_input": true
+      },
+      "industry_sub": {
+        "present": 3661,
+        "non_null": 3653,
+        "missing": 40,
+        "null": 8,
+        "used_in_input": true
+      },
+      "is_verified": {
+        "present": 2352,
+        "non_null": 0,
+        "missing": 1349,
+        "null": 2352,
+        "used_in_input": false
+      },
+      "like_cnt": {
+        "present": 2352,
+        "non_null": 0,
+        "missing": 1349,
+        "null": 2352,
+        "used_in_input": false
+      },
+      "ocr_text": {
+        "present": 3155,
+        "non_null": 1953,
+        "missing": 546,
+        "null": 1202,
+        "used_in_input": true
+      },
+      "photo_type": {
+        "present": 2352,
+        "non_null": 0,
+        "missing": 1349,
+        "null": 2352,
+        "used_in_input": false
+      },
+      "play_cnt": {
+        "present": 2352,
+        "non_null": 0,
+        "missing": 1349,
+        "null": 2352,
+        "used_in_input": false
+      },
+      "product": {
+        "present": 3515,
+        "non_null": 3501,
+        "missing": 186,
+        "null": 14,
+        "used_in_input": true
+      },
+      "reduce_similar_cnt": {
+        "present": 2352,
+        "non_null": 0,
+        "missing": 1349,
+        "null": 2352,
+        "used_in_input": false
+      },
+      "report_cnt": {
+        "present": 2352,
+        "non_null": 0,
+        "missing": 1349,
+        "null": 2352,
+        "used_in_input": false
+      },
+      "share_cnt": {
+        "present": 2352,
+        "non_null": 0,
+        "missing": 1349,
+        "null": 2352,
+        "used_in_input": false
+      },
+      "show_cnt": {
+        "present": 3701,
+        "non_null": 3701,
+        "missing": 0,
+        "null": 0,
+        "used_in_input": false
+      },
+      "upload_timestamp": {
+        "present": 2352,
+        "non_null": 0,
+        "missing": 1349,
+        "null": 2352,
+        "used_in_input": false
+      },
+      "verification_type": {
+        "present": 2352,
+        "non_null": 0,
+        "missing": 1349,
+        "null": 2352,
+        "used_in_input": false
+      }
+    },
+    "Live Streaming": {
+      "is_shop_live": {
+        "present": 57907,
+        "non_null": 57907,
+        "missing": 62952,
+        "null": 0,
+        "used_in_input": true
+      },
+      "items": {
+        "present": 1598,
+        "non_null": 1598,
+        "missing": 119261,
+        "null": 0,
+        "used_in_input": false
+      },
+      "live_category": {
+        "present": 57907,
+        "non_null": 57907,
+        "missing": 62952,
+        "null": 0,
+        "used_in_input": true
+      },
+      "live_comment_cnt": {
+        "present": 120859,
+        "non_null": 120859,
+        "missing": 0,
+        "null": 0,
+        "used_in_input": false
+      },
+      "live_cover_content": {
+        "present": 120859,
+        "non_null": 120859,
+        "missing": 0,
+        "null": 0,
+        "used_in_input": true
+      },
+      "live_like_cnt": {
+        "present": 120859,
+        "non_null": 120859,
+        "missing": 0,
+        "null": 0,
+        "used_in_input": false
+      },
+      "live_title": {
+        "present": 54758,
+        "non_null": 54758,
+        "missing": 66101,
+        "null": 0,
+        "used_in_input": true
+      },
+      "live_total_user_cnt": {
+        "present": 57907,
+        "non_null": 57907,
+        "missing": 62952,
+        "null": 0,
+        "used_in_input": false
+      },
+      "live_total_view_cnt": {
+        "present": 57907,
+        "non_null": 57907,
+        "missing": 62952,
+        "null": 0,
+        "used_in_input": false
+      },
+      "live_total_view_duration": {
+        "present": 57907,
+        "non_null": 57907,
+        "missing": 62952,
+        "null": 0,
+        "used_in_input": false
+      }
+    },
+    "Video Browsing": {
+      "asr": {
+        "present": 659878,
+        "non_null": 659878,
+        "missing": 0,
+        "null": 0,
+        "used_in_input": true
+      },
+      "caption": {
+        "present": 478920,
+        "non_null": 478855,
+        "missing": 180958,
+        "null": 65,
+        "used_in_input": true
+      },
+      "collect_cnt": {
+        "present": 659878,
+        "non_null": 659878,
+        "missing": 0,
+        "null": 0,
+        "used_in_input": false
+      },
+      "comment_cnt": {
+        "present": 659878,
+        "non_null": 659878,
+        "missing": 0,
+        "null": 0,
+        "used_in_input": false
+      },
+      "complete_play_cnt": {
+        "present": 659878,
+        "non_null": 659878,
+        "missing": 0,
+        "null": 0,
+        "used_in_input": false
+      },
+      "download_cnt": {
+        "present": 659878,
+        "non_null": 659878,
+        "missing": 0,
+        "null": 0,
+        "used_in_input": false
+      },
+      "duration": {
+        "present": 659878,
+        "non_null": 659878,
+        "missing": 0,
+        "null": 0,
+        "used_in_input": true
+      },
+      "fans_user_num": {
+        "present": 548288,
+        "non_null": 548288,
+        "missing": 111590,
+        "null": 0,
+        "used_in_input": false
+      },
+      "fans_user_num_range": {
+        "present": 478920,
+        "non_null": 478855,
+        "missing": 180958,
+        "null": 65,
+        "used_in_input": false
+      },
+      "follow_cnt": {
+        "present": 659878,
+        "non_null": 659878,
+        "missing": 0,
+        "null": 0,
+        "used_in_input": false
+      },
+      "is_verified": {
+        "present": 659878,
+        "non_null": 659878,
+        "missing": 0,
+        "null": 0,
+        "used_in_input": false
+      },
+      "like_cnt": {
+        "present": 659878,
+        "non_null": 659878,
+        "missing": 0,
+        "null": 0,
+        "used_in_input": false
+      },
+      "ocr": {
+        "present": 659878,
+        "non_null": 659878,
+        "missing": 0,
+        "null": 0,
+        "used_in_input": true
+      },
+      "photo_type": {
+        "present": 659878,
+        "non_null": 659878,
+        "missing": 0,
+        "null": 0,
+        "used_in_input": true
+      },
+      "play_cnt": {
+        "present": 659878,
+        "non_null": 659878,
+        "missing": 0,
+        "null": 0,
+        "used_in_input": false
+      },
+      "reduce_similar_cnt": {
+        "present": 659878,
+        "non_null": 659878,
+        "missing": 0,
+        "null": 0,
+        "used_in_input": false
+      },
+      "report_cnt": {
+        "present": 659878,
+        "non_null": 659878,
+        "missing": 0,
+        "null": 0,
+        "used_in_input": false
+      },
+      "share_cnt": {
+        "present": 659878,
+        "non_null": 659878,
+        "missing": 0,
+        "null": 0,
+        "used_in_input": false
+      },
+      "show_cnt": {
+        "present": 659878,
+        "non_null": 659878,
+        "missing": 0,
+        "null": 0,
+        "used_in_input": false
+      },
+      "upload_timestamp": {
+        "present": 478920,
+        "non_null": 478855,
+        "missing": 180958,
+        "null": 65,
+        "used_in_input": false
+      },
+      "verification_type": {
+        "present": 77592,
+        "non_null": 77592,
+        "missing": 582286,
+        "null": 0,
+        "used_in_input": false
+      }
+    },
+    "E-commerce": {
+      "category_level1_name": {
+        "present": 12860,
+        "non_null": 12836,
+        "missing": 5,
+        "null": 24,
+        "used_in_input": true
+      },
+      "category_level2_name": {
+        "present": 12860,
+        "non_null": 12836,
+        "missing": 5,
+        "null": 24,
+        "used_in_input": true
+      },
+      "category_level3_name": {
+        "present": 12860,
+        "non_null": 12836,
+        "missing": 5,
+        "null": 24,
+        "used_in_input": true
+      },
+      "external_item_title": {
+        "present": 12860,
+        "non_null": 12836,
+        "missing": 5,
+        "null": 24,
+        "used_in_input": true
+      },
+      "industry_level1_name": {
+        "present": 12860,
+        "non_null": 12836,
+        "missing": 5,
+        "null": 24,
+        "used_in_input": true
+      },
+      "industry_level2_name": {
+        "present": 12860,
+        "non_null": 12836,
+        "missing": 5,
+        "null": 24,
+        "used_in_input": true
+      },
+      "industry_level3_name": {
+        "present": 12860,
+        "non_null": 12836,
+        "missing": 5,
+        "null": 24,
+        "used_in_input": true
+      },
+      "item_desc": {
+        "present": 10201,
+        "non_null": 736,
+        "missing": 2664,
+        "null": 9465,
+        "used_in_input": true
+      },
+      "item_num_180d_buyer": {
+        "present": 12865,
+        "non_null": 12865,
+        "missing": 0,
+        "null": 0,
+        "used_in_input": false
+      },
+      "item_num_180d_cart": {
+        "present": 12865,
+        "non_null": 12865,
+        "missing": 0,
+        "null": 0,
+        "used_in_input": false
+      },
+      "item_num_180d_rebuyer": {
+        "present": 12865,
+        "non_null": 12865,
+        "missing": 0,
+        "null": 0,
+        "used_in_input": false
+      },
+      "item_num_180d_sales": {
+        "present": 12865,
+        "non_null": 12865,
+        "missing": 0,
+        "null": 0,
+        "used_in_input": false
+      },
+      "item_num_good_assess": {
+        "present": 12865,
+        "non_null": 12865,
+        "missing": 0,
+        "null": 0,
+        "used_in_input": false
+      },
+      "item_price": {
+        "present": 12865,
+        "non_null": 12865,
+        "missing": 0,
+        "null": 0,
+        "used_in_input": true
+      },
+      "item_title": {
+        "present": 12860,
+        "non_null": 12836,
+        "missing": 5,
+        "null": 24,
+        "used_in_input": true
+      },
+      "pay_item_qty": {
+        "present": 12865,
+        "non_null": 12865,
+        "missing": 0,
+        "null": 0,
+        "used_in_input": false
+      },
+      "product_id": {
+        "present": 2,
+        "non_null": 2,
+        "missing": 12863,
+        "null": 0,
+        "used_in_input": true
+      },
+      "product_source": {
+        "present": 12865,
+        "non_null": 12865,
+        "missing": 0,
+        "null": 0,
+        "used_in_input": true
+      }
+    },
+    "Customer Service": {
+      "express_fee": {
+        "present": 225,
+        "non_null": 225,
+        "missing": 887,
+        "null": 0,
+        "used_in_input": false
+      },
+      "item_price": {
+        "present": 225,
+        "non_null": 225,
+        "missing": 887,
+        "null": 0,
+        "used_in_input": true
+      },
+      "item_qty": {
+        "present": 225,
+        "non_null": 225,
+        "missing": 887,
+        "null": 0,
+        "used_in_input": false
+      },
+      "pay_order_time": {
+        "present": 225,
+        "non_null": 225,
+        "missing": 887,
+        "null": 0,
+        "used_in_input": false
+      },
+      "product_category_info": {
+        "present": 225,
+        "non_null": 225,
+        "missing": 887,
+        "null": 0,
+        "used_in_input": true
+      },
+      "product_name": {
+        "present": 225,
+        "non_null": 225,
+        "missing": 887,
+        "null": 0,
+        "used_in_input": true
+      },
+      "ticket_category": {
+        "present": 1112,
+        "non_null": 1112,
+        "missing": 0,
+        "null": 0,
+        "used_in_input": true
+      }
+    },
+    "Search Behavior": {}
+  },
+  "action_field_coverage_per_action_event": {
+    "conversion": {
+      "conversion_cnt": {
+        "present": 3682,
+        "non_null": 3682,
+        "missing": 0,
+        "null": 0
+      },
+      "type": {
+        "present": 3682,
+        "non_null": 3682,
+        "missing": 0,
+        "null": 0
+      }
+    },
+    "comment": {
+      "comment_cnt": {
+        "present": 16035,
+        "non_null": 16035,
+        "missing": 5408,
+        "null": 0
+      },
+      "comment_detail_list": {
+        "present": 3163,
+        "non_null": 3163,
+        "missing": 18280,
+        "null": 0
+      },
+      "comment_stay_duration": {
+        "present": 5108,
+        "non_null": 5108,
+        "missing": 16335,
+        "null": 0
+      },
+      "is_at_friend_in_comment": {
+        "present": 5108,
+        "non_null": 5108,
+        "missing": 16335,
+        "null": 0
+      },
+      "is_comment": {
+        "present": 300,
+        "non_null": 300,
+        "missing": 21143,
+        "null": 0
+      },
+      "is_comment_action": {
+        "present": 5108,
+        "non_null": 5108,
+        "missing": 16335,
+        "null": 0
+      },
+      "type": {
+        "present": 21443,
+        "non_null": 21443,
+        "missing": 0,
+        "null": 0
+      }
+    },
+    "watch": {
+      "is_backward_play": {
+        "present": 659878,
+        "non_null": 659878,
+        "missing": 122043,
+        "null": 0
+      },
+      "is_complete_play": {
+        "present": 660551,
+        "non_null": 660551,
+        "missing": 121370,
+        "null": 0
+      },
+      "is_enlarge_play": {
+        "present": 659878,
+        "non_null": 659878,
+        "missing": 122043,
+        "null": 0
+      },
+      "is_fast_forward_play": {
+        "present": 659878,
+        "non_null": 659878,
+        "missing": 122043,
+        "null": 0
+      },
+      "play_count": {
+        "present": 120859,
+        "non_null": 120859,
+        "missing": 661062,
+        "null": 0
+      },
+      "play_duration": {
+        "present": 781291,
+        "non_null": 781291,
+        "missing": 630,
+        "null": 0
+      },
+      "played_loop_cnt": {
+        "present": 660002,
+        "non_null": 660002,
+        "missing": 121919,
+        "null": 0
+      },
+      "type": {
+        "present": 781921,
+        "non_null": 781921,
+        "missing": 0,
+        "null": 0
+      }
+    },
+    "cart": {
+      "is_add_to_cart": {
+        "present": 12865,
+        "non_null": 12865,
+        "missing": 0,
+        "null": 0
+      },
+      "type": {
+        "present": 12865,
+        "non_null": 12865,
+        "missing": 0,
+        "null": 0
+      }
+    },
+    "purchase": {
+      "is_pay": {
+        "present": 12865,
+        "non_null": 12865,
+        "missing": 1158,
+        "null": 0
+      },
+      "paid": {
+        "present": 1112,
+        "non_null": 1112,
+        "missing": 12911,
+        "null": 0
+      },
+      "pay_cnt": {
+        "present": 46,
+        "non_null": 46,
+        "missing": 13977,
+        "null": 0
+      },
+      "pay_purchase_amt": {
+        "present": 42,
+        "non_null": 42,
+        "missing": 13981,
+        "null": 0
+      },
+      "type": {
+        "present": 14023,
+        "non_null": 14023,
+        "missing": 0,
+        "null": 0
+      }
+    },
+    "dialogue": {
+      "content": {
+        "present": 1112,
+        "non_null": 1112,
+        "missing": 0,
+        "null": 0
+      },
+      "type": {
+        "present": 1112,
+        "non_null": 1112,
+        "missing": 0,
+        "null": 0
+      }
+    },
+    "search": {
+      "keyword": {
+        "present": 6020,
+        "non_null": 6020,
+        "missing": 0,
+        "null": 0
+      },
+      "query_category": {
+        "present": 5432,
+        "non_null": 5432,
+        "missing": 588,
+        "null": 0
+      },
+      "type": {
+        "present": 6020,
+        "non_null": 6020,
+        "missing": 0,
+        "null": 0
+      }
+    },
+    "show": {
+      "show_cnt": {
+        "present": 6020,
+        "non_null": 6020,
+        "missing": 0,
+        "null": 0
+      },
+      "type": {
+        "present": 6020,
+        "non_null": 6020,
+        "missing": 0,
+        "null": 0
+      }
+    },
+    "click": {
+      "click_cnt": {
+        "present": 2372,
+        "non_null": 2372,
+        "missing": 0,
+        "null": 0
+      },
+      "type": {
+        "present": 2372,
+        "non_null": 2372,
+        "missing": 0,
+        "null": 0
+      }
+    },
+    "like": {
+      "like_cnt": {
+        "present": 25574,
+        "non_null": 25574,
+        "missing": 0,
+        "null": 0
+      },
+      "type": {
+        "present": 25574,
+        "non_null": 25574,
+        "missing": 0,
+        "null": 0
+      }
+    },
+    "share": {
+      "share_cnt": {
+        "present": 2301,
+        "non_null": 2301,
+        "missing": 0,
+        "null": 0
+      },
+      "type": {
+        "present": 2301,
+        "non_null": 2301,
+        "missing": 0,
+        "null": 0
+      }
+    },
+    "click_cart": {
+      "is_click_cart_action": {
+        "present": 2352,
+        "non_null": 2352,
+        "missing": 0,
+        "null": 0
+      },
+      "item_desc": {
+        "present": 107,
+        "non_null": 107,
+        "missing": 2245,
+        "null": 0
+      },
+      "item_id": {
+        "present": 1602,
+        "non_null": 1602,
+        "missing": 750,
+        "null": 0
+      },
+      "item_price": {
+        "present": 1593,
+        "non_null": 1593,
+        "missing": 759,
+        "null": 0
+      },
+      "item_title": {
+        "present": 1598,
+        "non_null": 1598,
+        "missing": 754,
+        "null": 0
+      },
+      "type": {
+        "present": 2352,
+        "non_null": 2352,
+        "missing": 0,
+        "null": 0
+      }
+    },
+    "follow": {
+      "is_follow_action": {
+        "present": 4023,
+        "non_null": 4023,
+        "missing": 11,
+        "null": 0
+      },
+      "type": {
+        "present": 4034,
+        "non_null": 4034,
+        "missing": 0,
+        "null": 0
+      }
+    },
+    "collect": {
+      "collect_cnt": {
+        "present": 2908,
+        "non_null": 2908,
+        "missing": 0,
+        "null": 0
+      },
+      "type": {
+        "present": 2908,
+        "non_null": 2908,
+        "missing": 0,
+        "null": 0
+      }
+    },
+    "download": {
+      "download_cnt": {
+        "present": 440,
+        "non_null": 440,
+        "missing": 0,
+        "null": 0
+      },
+      "type": {
+        "present": 440,
+        "non_null": 440,
+        "missing": 0,
+        "null": 0
+      }
+    },
+    "dislike": {
+      "reduce_similar_cnt": {
+        "present": 1237,
+        "non_null": 1237,
+        "missing": 333,
+        "null": 0
+      },
+      "reduce_simliar_cnt": {
+        "present": 296,
+        "non_null": 296,
+        "missing": 1274,
+        "null": 0
+      },
+      "report_cnt": {
+        "present": 37,
+        "non_null": 37,
+        "missing": 1533,
+        "null": 0
+      },
+      "type": {
+        "present": 1570,
+        "non_null": 1570,
+        "missing": 0,
+        "null": 0
+      }
+    },
+    "activation": {
+      "activation_cnt": {
+        "present": 1124,
+        "non_null": 1124,
+        "missing": 0,
+        "null": 0
+      },
+      "type": {
+        "present": 1124,
+        "non_null": 1124,
+        "missing": 0,
+        "null": 0
+      }
+    },
+    "unfollow": {
+      "is_unfollow_action": {
+        "present": 144,
+        "non_null": 144,
+        "missing": 0,
+        "null": 0
+      },
+      "type": {
+        "present": 144,
+        "non_null": 144,
+        "missing": 0,
+        "null": 0
+      }
+    },
+    "send_gift": {
+      "gift_amount": {
+        "present": 1494,
+        "non_null": 1494,
+        "missing": 0,
+        "null": 0
+      },
+      "type": {
+        "present": 1494,
+        "non_null": 1494,
+        "missing": 0,
+        "null": 0
+      }
+    },
+    "join_group": {
+      "join_fans_group_cnt": {
+        "present": 142,
+        "non_null": 142,
+        "missing": 0,
+        "null": 0
+      },
+      "type": {
+        "present": 142,
+        "non_null": 142,
+        "missing": 0,
+        "null": 0
+      }
+    },
+    "submit": {
+      "form_submit_total_cnt": {
+        "present": 15,
+        "non_null": 15,
+        "missing": 0,
+        "null": 0
+      },
+      "type": {
+        "present": 15,
+        "non_null": 15,
+        "missing": 0,
+        "null": 0
+      }
+    },
+    "report": {
+      "report_cnt": {
+        "present": 9,
+        "non_null": 9,
+        "missing": 0,
+        "null": 0
+      },
+      "type": {
+        "present": 9,
+        "non_null": 9,
+        "missing": 0,
+        "null": 0
+      }
+    }
+  },
+  "preserved_false_action_flags": {
+    "watch.is_complete_play": 522337,
+    "watch.is_fast_forward_play": 565630,
+    "watch.is_backward_play": 562922,
+    "watch.is_enlarge_play": 659046,
+    "cart.is_add_to_cart": 12705,
+    "purchase.is_pay": 10510,
+    "comment.is_at_friend_in_comment": 5108,
+    "purchase.paid": 887
+  },
+  "snapshots_by_split": {
+    "train": 531852,
+    "validation": 131582,
+    "test": 129047
+  },
+  "users_by_split": {
+    "train": 184,
+    "validation": 179,
+    "test": 170
+  },
+  "total_snapshots": 792481,
+  "history_length_distribution": {
+    "1": 67,
+    "2": 100,
+    "3": 95,
+    "4": 116,
+    "5": 111,
+    "6": 123,
+    "7": 109,
+    "8": 120,
+    "9": 124,
+    "10": 129,
+    "11": 115,
+    "12": 132,
+    "13": 119,
+    "14": 135,
+    "15": 123,
+    "16": 136,
+    "17": 131,
+    "18": 141,
+    "19": 128,
+    "20": 139,
+    "21": 134,
+    "22": 141,
+    "23": 126,
+    "24": 133,
+    "25": 135,
+    "26": 143,
+    "27": 135,
+    "28": 149,
+    "29": 124,
+    "30": 788868
+  },
+  "histories_with_uncertain_order": 492801,
+  "histories_truncated_to_30": 788723,
+  "histories_with_partial_eligibility_group": 68411,
+  "multi_event_eligibility_groups": 72738,
+  "snapshot_groups_outside_split_period": 921,
+  "history_empty": 0,
+  "objectives": {
+    "targets_created": false,
+    "mask_created": false,
+    "next_action_label_validity": "not_assessed"
+  },
+  "schema_version": "omnibehavior_pretraining_v2",
+  "users": 186,
+  "expected_users": 200,
+  "missing_users": [
+    "user_068",
+    "user_081",
+    "user_104",
+    "user_140",
+    "user_143",
+    "user_150",
+    "user_159",
+    "user_162",
+    "user_177",
+    "user_186",
+    "user_187",
+    "user_190",
+    "user_198",
+    "user_199"
+  ],
+  "timezone": null,
+  "raw_profile_text_used": false,
+  "verification": {
+    "source_checksums": "passed",
+    "parquet_round_trip": "passed",
+    "index_references": "passed",
+    "cutoffs_and_profiles": "passed"
+  },
+  "preview_samples": 10,
+  "preview_scenarios": [
+    "Advertisement",
+    "Customer Service",
+    "E-commerce",
+    "Live Streaming",
+    "Search Behavior",
+    "Video Browsing"
+  ],
+  "events_parquet_bytes": 539350503,
+  "snapshots_parquet_bytes": 37635556,
+  "elapsed_seconds": 150.826,
+  "limitations": [
+    "Source timezone and actual log availability are unknown.",
+    "Date-only records are eligible only when the source day has ended.",
+    "Eligibility ordering does not establish actual order within overlapping intervals.",
+    "The last 30 observations may include a partial eligibility or source-record group.",
+    "Actions include negative and unknown states; action.type is not a success label.",
+    "Shared context and related fields require coordinated masking across source_record_id.",
+    "Next-action targets must be strictly ordered, excluded from input and constrained to their split.",
+    "No CVR definition or conversion attribution has been validated."
+  ],
+  "total_output_bytes": 577469292
+}
