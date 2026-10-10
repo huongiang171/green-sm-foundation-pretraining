@@ -1,0 +1,13 @@
+{
+  "event_files_count": 20000,
+  "snapshot_files_count": 20000,
+  "detailed_sample_stride": 20,
+  "sample_events_checked": 28188,
+  "sample_snapshots_checked": 1000,
+  "temporal_violations": 0,
+  "user_fk_violations": 0,
+  "poi_fk_violations": 0,
+  "sequence_len_violations": 0,
+  "schema_mismatches": 0,
+  "passed": true
+}
