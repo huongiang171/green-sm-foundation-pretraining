@@ -21,6 +21,9 @@ class VocabularyConfig:
     max_values_per_key: int = 50_000
     numeric_bucket_count: int = 16
     text_hash_buckets: int = 4096
+    fit_split: str = "train"
+    source_schema_version: str = "omnibehavior_pretraining_v2"
+    source_fingerprint: str | None = None
 
 
 def _value_key(value: Any) -> str:
@@ -48,6 +51,9 @@ class VocabularyArtifacts:
     modality_to_id: dict[str, int]
     source_to_id: dict[str, int]
     text_hash_buckets: int
+    fit_split: str = "train"
+    source_schema_version: str = "omnibehavior_pretraining_v2"
+    source_fingerprint: str | None = None
 
     def encode_value(self, token: KeyValueToken) -> int:
         namespace = _namespace(self.dataset_name, token)
@@ -92,6 +98,9 @@ class VocabularyArtifacts:
             "modality_to_id": self.modality_to_id,
             "source_to_id": self.source_to_id,
             "text_hash_buckets": self.text_hash_buckets,
+            "fit_split": self.fit_split,
+            "source_schema_version": self.source_schema_version,
+            "source_fingerprint": self.source_fingerprint,
         }
 
     def save(self, path: str | Path) -> None:
@@ -123,6 +132,11 @@ class VocabularyArtifacts:
             },
             source_to_id={str(key): int(value) for key, value in payload["source_to_id"].items()},
             text_hash_buckets=int(payload["text_hash_buckets"]),
+            fit_split=str(payload.get("fit_split", "train")),
+            source_schema_version=str(
+                payload.get("source_schema_version", "omnibehavior_pretraining_v2")
+            ),
+            source_fingerprint=payload.get("source_fingerprint"),
         )
 
 
@@ -130,6 +144,9 @@ def fit_vocabulary(
     train_tokens: Iterable[KeyValueToken], config: VocabularyConfig
 ) -> VocabularyArtifacts:
     """Fit metadata from train tokens only; the iterable is never mutated."""
+
+    if config.fit_split != "train":
+        raise ValueError("Vocabulary fitting must use the train split")
 
     categorical_counts: dict[str, Counter[str]] = defaultdict(Counter)
     numeric_values: dict[str, list[float]] = defaultdict(list)
@@ -178,4 +195,34 @@ def fit_vocabulary(
         modality_to_id={value: index for index, value in enumerate(sorted(modalities), start=1)},
         source_to_id={value: index for index, value in enumerate(sorted(sources), start=1)},
         text_hash_buckets=config.text_hash_buckets,
+        fit_split=config.fit_split,
+        source_schema_version=config.source_schema_version,
+        source_fingerprint=config.source_fingerprint,
     )
+
+
+def fit_vocabulary_from_samples(
+    samples: Iterable[Any],
+    config: VocabularyConfig,
+    tokenizer_config: Any | None = None,
+) -> VocabularyArtifacts:
+    """Fit a vocabulary from canonical train samples and reject other splits."""
+
+    if config.fit_split != "train":
+        raise ValueError("Vocabulary fitting must use the train split")
+    from .tokenizer import TokenizerConfig, semantic_tokens
+
+    token_config = tokenizer_config or TokenizerConfig()
+    tokens: list[KeyValueToken] = []
+    for sample in samples:
+        if sample.split != config.fit_split:
+            raise ValueError(
+                f"Vocabulary fitting requires the train split; got {sample.split!r}"
+            )
+        if sample.dataset_name != config.dataset_name:
+            raise ValueError(
+                f"Vocabulary dataset {config.dataset_name!r} does not match "
+                f"sample dataset {sample.dataset_name!r}"
+            )
+        tokens.extend(semantic_tokens(sample, token_config))
+    return fit_vocabulary(tokens, config)

@@ -2,8 +2,10 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from src.foundation_input.types import SPECIAL_TOKEN_IDS, KeyValueToken
-from src.foundation_input.vocab import VocabularyConfig, fit_vocabulary
+import pytest
+
+from src.foundation_input.types import SPECIAL_TOKEN_IDS, CanonicalSample, KeyValueToken
+from src.foundation_input.vocab import VocabularyConfig, fit_vocabulary, fit_vocabulary_from_samples
 
 
 def _token(key: str, value, modality: str = "categorical") -> KeyValueToken:
@@ -63,3 +65,23 @@ def test_vocabulary_metadata_round_trips(tmp_path: Path) -> None:
     assert loaded.encode_value(_token("city", "hanoi")) == artifacts.encode_value(
         _token("city", "hanoi")
     )
+    assert loaded.fit_split == "train"
+    assert loaded.source_schema_version == "omnibehavior_pretraining_v2"
+
+
+def test_sample_vocabulary_fit_rejects_non_train_samples() -> None:
+    raw = {
+        "sample_id": "s",
+        "dataset_name": "omnibehavior_v2",
+        "split": "validation",
+        "user_id": "u",
+        "cutoff_time": __import__("datetime").datetime(2025, 1, 1),
+        "cutoff_inclusive": True,
+        "history_order_known": True,
+        "history_truncated": False,
+        "history_group_truncated": False,
+        "profile": {},
+        "events": (),
+    }
+    with pytest.raises(ValueError, match="train split"):
+        fit_vocabulary_from_samples([CanonicalSample(**raw)], VocabularyConfig("omnibehavior_v2"))

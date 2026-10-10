@@ -18,6 +18,7 @@ from .vocab import VocabularyArtifacts
 class DatasetConfig:
     max_event_count: int = 30
     max_tokens: int = 256
+    next_action_prediction: bool = False
 
 
 def _truncate_records(records: list[TokenRecord], config: DatasetConfig) -> tuple[TokenRecord, ...]:
@@ -29,9 +30,10 @@ def _truncate_records(records: list[TokenRecord], config: DatasetConfig) -> tupl
             groups.append([])
         groups[-1].append(record)
     kept_groups = groups[: config.max_event_count]
-    selected = tabular[: config.max_tokens]
+    record_budget = max(0, config.max_tokens - 2)
+    selected = tabular[:record_budget]
     for group in kept_groups:
-        if len(selected) + len(group) > config.max_tokens:
+        if len(selected) + len(group) > record_budget:
             break
         selected.extend(group)
     return tuple(selected)
@@ -47,12 +49,28 @@ def encode_sample(
     user_id_record = next(
         (record for record in records if record.token.key == "user_id"), None
     )
+    selected = _truncate_records(records, dataset_config)
+    next_action_records: tuple[TokenRecord, ...] = ()
+    if dataset_config.next_action_prediction:
+        sequence_groups: list[list[TokenRecord]] = []
+        for record in selected:
+            if record.token.source != "sequence":
+                continue
+            if not sequence_groups or sequence_groups[-1][0].token.event_group_id != record.token.event_group_id:
+                sequence_groups.append([])
+            sequence_groups[-1].append(record)
+        if sequence_groups:
+            target_group = sequence_groups[-1]
+            target_ids = {id(record) for record in target_group}
+            selected = tuple(record for record in selected if id(record) not in target_ids)
+            next_action_records = tuple(target_group)
     return EncodedSample(
         sample_id=sample.sample_id,
         dataset_name=sample.dataset_name,
         user_id=sample.user_id,
-        records=_truncate_records(records, dataset_config),
+        records=selected,
         user_id_value_id=user_id_record.value_id if user_id_record is not None else None,
+        next_action_records=next_action_records,
     )
 
 
@@ -79,28 +97,20 @@ class FoundationPretrainDataset:
             tokenizer_config = TokenizerConfig(context_allowlist=allowlist)
         self.tokenizer_config = tokenizer_config
         self.dataset_config = dataset_config or DatasetConfig()
-        self._cache: list[EncodedSample] = []
-
     def __iter__(self) -> Iterator[EncodedSample]:
         for sample in iter_normalized_samples(self.dataset_root, self.split, validate=True):
             encoded = encode_sample(
                 sample, self.artifacts, self.tokenizer_config, self.dataset_config
             )
-            self._cache.append(encoded)
             yield encoded
 
     def __getitem__(self, index: int) -> EncodedSample:
         if index < 0:
             raise IndexError("Negative indices are not supported by the streaming dataset")
-        while len(self._cache) <= index:
-            try:
-                next(self._cache_iterator)
-            except AttributeError:
-                self._cache_iterator = iter(self)
-                next(self._cache_iterator)
-            except StopIteration as error:
-                raise IndexError(index) from error
-        return self._cache[index]
+        for current, encoded in enumerate(self):
+            if current == index:
+                return encoded
+        raise IndexError(index)
 
 
 def _default_tensor_backend() -> Any:
@@ -131,9 +141,21 @@ def foundation_collate(
     backend = tensor_backend or _default_tensor_backend()
 
     rows: list[dict[str, list[int | bool]]] = []
+    next_action_type_ids: list[int] = []
+    next_action_group_ids: list[int] = []
     for sample in samples:
-        tabular = [record for record in sample.records if record.token.source == "tabular"]
-        sequence = [record for record in sample.records if record.token.source == "sequence"]
+        next_action = sample.next_action_records
+        target_record_ids = {id(record) for record in next_action}
+        tabular = [
+            record
+            for record in sample.records
+            if record.token.source == "tabular" and id(record) not in target_record_ids
+        ]
+        sequence = [
+            record
+            for record in sample.records
+            if record.token.source == "sequence" and id(record) not in target_record_ids
+        ]
         input_ids = [1]
         key_ids = [0]
         modality_ids = [0]
@@ -174,6 +196,16 @@ def foundation_collate(
                 "group_ids": group_ids,
             }
         )
+        target_type = next(
+            (
+                record.value_id
+                for record in next_action
+                if record.token.key in {"event.event_type", "event_type"}
+            ),
+            0,
+        )
+        next_action_type_ids.append(target_type)
+        next_action_group_ids.append(next_action[0].position_id if next_action else 0)
 
     max_length = max(len(row["input_ids"]) for row in rows)
     padded: dict[str, list[list[int | bool]]] = {}
@@ -213,5 +245,7 @@ def foundation_collate(
         ).reshape(len(samples)),
         targets={
             "event_group_ids": tensor(padded["group_ids"], dtype=backend.long),
+            "next_action_type_ids": tensor(next_action_type_ids, dtype=backend.long),
+            "next_action_group_ids": tensor(next_action_group_ids, dtype=backend.long),
         },
     )

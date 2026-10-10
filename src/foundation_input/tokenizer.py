@@ -76,11 +76,11 @@ def _modality(key: str, value: Any) -> str:
         return "missing"
     if isinstance(value, bool):
         return "categorical"
-    if isinstance(value, (int, float)):
-        return "numeric"
     lowered = key.lower()
     if "interval" in lowered:
         return "categorical"
+    if isinstance(value, (int, float)):
+        return "numeric"
     if any(marker in lowered for marker in _TEXT_FIELD_MARKERS):
         return "text"
     return "categorical"
@@ -219,16 +219,19 @@ def tokenize_sample(
             group = token.event_group_id or "<missing-event-group>"
             if group not in event_positions:
                 event_positions[group] = len(event_positions) + 1
-                time_gap_id = _time_gap_id(
-                    previous_event_time,
-                    token.timestamp or sample.cutoff_time,
-                    config.time_gap_boundaries_seconds,
-                )
-                previous_event_time = token.timestamp
+                if sample.history_order_known:
+                    time_gap_id = _time_gap_id(
+                        previous_event_time,
+                        token.timestamp or sample.cutoff_time,
+                        config.time_gap_boundaries_seconds,
+                    )
+                    previous_event_time = token.timestamp
+                else:
+                    time_gap_id = 0
                 last_group = group
             else:
                 time_gap_id = records[-1].time_gap_id if records else 0
-            position_id = event_positions[group]
+            position_id = event_positions[group] if sample.history_order_known else 0
             if group != last_group:
                 last_group = group
         records.append(

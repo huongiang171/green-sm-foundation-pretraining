@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+from datetime import datetime, timezone
 from pathlib import Path
 
 import pyarrow as pa
@@ -21,9 +22,9 @@ def _write_dataset(root: Path, *, omit_event_column: str | None = None) -> None:
         "source_record_index": 0,
         "action_index": 0,
         "source_action_count": 1,
-        "event_time": "2025-09-01",
+        "event_time": datetime(2025, 9, 1, tzinfo=timezone.utc),
         "time_precision": "day",
-        "eligibility_time": "2025-09-02T00:00:00",
+        "eligibility_time": datetime(2025, 9, 2, tzinfo=timezone.utc),
         "eligibility_inclusive": False,
         "scenario": "E-commerce",
         "event_type": "click",
@@ -39,9 +40,11 @@ def _write_dataset(root: Path, *, omit_event_column: str | None = None) -> None:
                 {
                     "sample_id": "u:2025-09-02:open",
                     "user_id": "u",
-                    "cutoff_time": "2025-09-02T00:00:00",
+                    "cutoff_time": datetime(2025, 9, 2, tzinfo=timezone.utc),
                     "cutoff_inclusive": False,
                     "split": "train",
+                    "history_start": 0,
+                    "history_stop": 1,
                     "history_event_ids": ["u:0:0"],
                     "history_order_known": True,
                     "history_truncated": False,
@@ -52,7 +55,15 @@ def _write_dataset(root: Path, *, omit_event_column: str | None = None) -> None:
         ),
         root / "snapshots" / "u.parquet",
     )
-    config = {"schema_version": "omnibehavior_pretraining_v2", "context_allowlist": {}}
+    config = {
+        "schema_version": "omnibehavior_pretraining_v2",
+        "context_allowlist": {},
+        "max_history_events": 30,
+        "splits": {
+            "start_inclusive": "2025-09-01T00:00:00",
+            "train_end_exclusive": "2025-11-01T00:00:00",
+        },
+    }
     config_path = root / "preprocessing_config.json"
     config_path.write_text(json.dumps(config), encoding="utf-8")
     checksum = hashlib.sha256(config_path.read_bytes()).hexdigest()
@@ -99,6 +110,17 @@ def test_validate_parquet_schema_reports_missing_event_column(tmp_path: Path) ->
     _write_dataset(tmp_path, omit_event_column="action_json")
     with pytest.raises(ManifestError, match="action_json"):
         validate_parquet_schema(tmp_path / "events" / "u.parquet", kind="events")
+
+
+def test_validate_parquet_schema_can_enforce_arrow_types(tmp_path: Path) -> None:
+    _write_dataset(tmp_path)
+
+    validate_parquet_schema(
+        tmp_path / "events" / "u.parquet", kind="events", strict_types=True
+    )
+    validate_parquet_schema(
+        tmp_path / "snapshots" / "u.parquet", kind="snapshots", strict_types=True
+    )
 
 
 def test_load_manifest_exposes_stable_dataset_name(tmp_path: Path) -> None:

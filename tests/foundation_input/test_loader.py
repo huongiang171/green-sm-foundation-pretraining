@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from datetime import datetime, timezone
 from pathlib import Path
 
 import pyarrow as pa
@@ -77,14 +78,41 @@ def test_iter_normalized_samples_sorts_history_by_eligibility_coordinate(tmp_pat
             "event_id": "u:1:0",
             "source_record_id": "u:1",
             "source_record_index": 1,
-            "eligibility_time": "2025-09-01T12:00:00",
+            "eligibility_time": datetime(2025, 9, 1, 12, tzinfo=timezone.utc),
         }
     )
     pq.write_table(pa.Table.from_pylist([first, second]), event_path)
+    manifest_path = tmp_path / "manifest.json"
+    manifest = __import__("json").loads(manifest_path.read_text(encoding="utf-8"))
+    manifest["shards"][0]["event_rows"] = 2
+    manifest_path.write_text(__import__("json").dumps(manifest), encoding="utf-8")
     snapshot_path = tmp_path / "snapshots" / "u.parquet"
     snapshot_rows = pq.read_table(snapshot_path).to_pylist()
     snapshot_rows[0]["history_event_ids"] = ["u:0:0", "u:1:0"]
+    snapshot_rows[0]["history_stop"] = 2
     pq.write_table(pa.Table.from_pylist(snapshot_rows), snapshot_path)
 
     sample = next(iter_normalized_samples(tmp_path, split="train", validate=True))
     assert [event.event_id for event in sample.events] == ["u:1:0", "u:0:0"]
+
+
+def test_iter_normalized_samples_rejects_history_slice_mismatch(tmp_path: Path) -> None:
+    _write_dataset(tmp_path)
+    snapshot_path = tmp_path / "snapshots" / "u.parquet"
+    rows = pq.read_table(snapshot_path).to_pylist()
+    rows[0]["history_stop"] = 2
+    pq.write_table(pa.Table.from_pylist(rows), snapshot_path)
+
+    with pytest.raises(ManifestError, match="history bounds"):
+        list(iter_normalized_samples(tmp_path, split="train", validate=False))
+
+
+def test_iter_normalized_samples_rejects_snapshot_in_wrong_split(tmp_path: Path) -> None:
+    _write_dataset(tmp_path)
+    snapshot_path = tmp_path / "snapshots" / "u.parquet"
+    rows = pq.read_table(snapshot_path).to_pylist()
+    rows[0]["cutoff_time"] = datetime(2025, 11, 20, tzinfo=timezone.utc)
+    pq.write_table(pa.Table.from_pylist(rows), snapshot_path)
+
+    with pytest.raises(ManifestError, match="split boundary"):
+        list(iter_normalized_samples(tmp_path, split="train", validate=False))
