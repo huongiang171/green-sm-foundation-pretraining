@@ -39,8 +39,9 @@ def _truncate_records(records: list[TokenRecord], config: DatasetConfig) -> Trun
     if record_budget == 0:
         return TruncationResult((), rejected_recent_group=bool(kept_groups))
 
-    reserved_tabular = 1 if tabular and kept_groups else 0
-    remaining_event_budget = max(0, record_budget - reserved_tabular)
+    # Complete recent event groups have priority over tabular context. Reserving a
+    # tabular slot first can incorrectly reject a group that fits the full budget.
+    remaining_event_budget = record_budget
     selected_groups: list[list[TokenRecord]] = []
     for group in reversed(kept_groups):
         if len(group) <= remaining_event_budget:

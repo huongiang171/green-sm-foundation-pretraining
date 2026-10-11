@@ -354,3 +354,18 @@ def test_truncation_does_not_return_a_group_prefix() -> None:
 
     assert retained.rejected_recent_group
     assert all(record.token.source != "sequence" for record in retained.records)
+
+
+def test_truncation_prefers_complete_event_group_over_tabular_token() -> None:
+    records = [
+        _record(11, source="tabular", group=None, position=0),
+        _record(21, source="sequence", group="recent", position=1),
+        _record(22, source="sequence", group="recent", position=1),
+        _record(23, source="sequence", group="recent", position=1),
+    ]
+
+    retained = _truncate_records(records, DatasetConfig(max_tokens=5))
+
+    assert not retained.rejected_recent_group
+    assert [record.value_id for record in retained.records] == [21, 22, 23]
+    assert all(record.token.source == "sequence" for record in retained.records)
