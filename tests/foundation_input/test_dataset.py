@@ -76,6 +76,17 @@ def _too_large_group_sample() -> CanonicalSample:
     return replace(base, events=(event,))
 
 
+def _two_complete_event_sample() -> CanonicalSample:
+    base = _canonical_sample()
+    second = replace(
+        base.events[0],
+        event_id="user-001:1:0",
+        source_record_id="user-001:1",
+        source_record_index=1,
+    )
+    return replace(base, events=(base.events[0], second))
+
+
 def test_collator_builds_layout_and_padding_without_changing_real_tokens() -> None:
     first = EncodedSample(
         sample_id="s1",
@@ -245,6 +256,35 @@ def test_next_action_requires_known_order_and_complete_groups() -> None:
     assert valid.next_action_records[0].token.event_group_id == "user-001:1"
     assert not unknown_order.next_action_records
     assert not incomplete_group.next_action_records
+
+
+@pytest.mark.parametrize(
+    "replacement", [{"history_order_known": False}, {"history_group_truncated": True}]
+)
+def test_invalid_next_action_is_masked_not_targeted(replacement) -> None:
+    sample = replace(_two_complete_event_sample(), **replacement)
+    encoded = encode_sample(
+        sample, _artifacts_for(sample), TokenizerConfig(), DatasetConfig(next_action_prediction=True)
+    )
+
+    batch = foundation_collate([encoded], tensor_backend=FakeTensorBackend())
+
+    assert encoded.next_action_records == ()
+    assert batch.targets["next_action_type_ids"].tolist() == [0]
+    assert batch.targets["next_action_valid_mask"].tolist() == [False]
+
+
+def test_one_complete_group_is_masked_for_next_action() -> None:
+    sample = _canonical_sample()
+    encoded = encode_sample(
+        sample, _artifacts_for(sample), TokenizerConfig(), DatasetConfig(next_action_prediction=True)
+    )
+
+    batch = foundation_collate([encoded], tensor_backend=FakeTensorBackend())
+
+    assert encoded.next_action_records == ()
+    assert batch.targets["next_action_type_ids"].tolist() == [0]
+    assert batch.targets["next_action_valid_mask"].tolist() == [False]
 
 
 def test_event_group_ids_are_independent_from_position_ids() -> None:
