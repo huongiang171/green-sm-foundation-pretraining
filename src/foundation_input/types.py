@@ -41,6 +41,8 @@ class TokenRecord:
     source_id: int
     position_id: int
     time_gap_id: int
+    numeric_value: float = 0.0
+    numeric_missing: bool = False
 
 
 @dataclass(frozen=True)
@@ -105,5 +107,7 @@ class FoundationBatch:
     position_ids: torch.LongTensor
     time_gap_ids: torch.LongTensor
     attention_mask: torch.BoolTensor
+    numeric_values: torch.FloatTensor
+    numeric_missing_mask: torch.BoolTensor
     user_ids: torch.LongTensor
     targets: dict[str, torch.Tensor]

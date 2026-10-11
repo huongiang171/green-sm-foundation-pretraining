@@ -38,6 +38,40 @@ def test_profile_column_order_does_not_change_tabular_token_set() -> None:
     assert ("user_id", "user-001", "categorical") in first_tokens
 
 
+def test_numeric_missing_and_list_text_are_encoded_deterministically() -> None:
+    event = _event(
+        action={"click_cnt": 0, "content": [{"role": "user", "content": "hello"}]}
+    )
+    config = TokenizerConfig(
+        numeric_fields=frozenset({("tabular", "profile.score")}),
+        include_action_content=True,
+    )
+    train = _sample({"score": 0.0}, (event,))
+    artifacts = fit_vocabulary(
+        semantic_tokens(train, config),
+        VocabularyConfig(dataset_name="omnibehavior_v2", include_action_content=True),
+        numeric_field_registry=config.numeric_fields,
+    )
+
+    transformed = _sample({"score": None}, (event,))
+    records = tokenize_sample(transformed, artifacts, config)
+    score = next(record for record in records if record.token.key == "profile.score")
+    content = next(record for record in records if record.token.key == "action.content")
+
+    assert score.numeric_missing is True
+    assert score.numeric_value == 0.0
+    assert content.token.value == "user: hello"
+
+
+def test_action_content_can_be_disabled_without_dropping_other_action_fields() -> None:
+    event = _event(action={"type": "click", "content": [{"role": "user", "content": "hello"}]})
+    tokens = semantic_tokens(_sample({}, (event,)), TokenizerConfig())
+    keys = {token.key for token in tokens}
+
+    assert "action.content" not in keys
+    assert "action.type" in keys
+
+
 def test_event_tokens_follow_allowlist_and_keep_source_record_group() -> None:
     event = _event(
         context={"product_id": "p-1", "secret_outcome": "must-not-enter"},

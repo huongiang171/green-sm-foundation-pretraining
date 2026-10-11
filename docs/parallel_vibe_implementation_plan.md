@@ -105,7 +105,7 @@ sim-v1/
 }
 ```
 
-Schema tối thiểu:
+Schema tối thiểu dưới đây là contract generic cho data/downstream simulation, không phải schema trực tiếp của pretrain v2 hiện tại. Pretrain v2 dùng `snapshots/*.parquet` và `events/*.parquet` với `context_json`/`action_json`; input adapter phải theo `docs/foundation_input_contract.md` và `data/pretrain_data/*/preprocessing_config.json`.
 
 | Data | Cột bắt buộc | Cột/ý nghĩa cần thêm cho task |
 |---|---|---|
@@ -151,9 +151,9 @@ team. Không thêm một evaluator riêng trong `src/downstream`.
 class KeyValueToken:
     key: str                 # column name hoặc event_type
     value: Any               # raw attribute/entity/text/numeric/geo
-    modality: str            # categorical | numerical | text | geo
+    modality: str            # categorical | numeric | text | missing | geo (geo optional)
     source: str              # tabular | sequence
-    timestamp: int | None    # None cho tabular, epoch seconds cho event
+    timestamp: datetime | None  # None cho tabular; giữ date-only/uncertain precision của source
 
 @dataclass
 class FoundationBatch:
@@ -164,8 +164,10 @@ class FoundationBatch:
     position_ids: torch.LongTensor    # [B, L]
     time_gap_ids: torch.LongTensor    # [B, L]
     attention_mask: torch.BoolTensor  # [B, L]; True=real token, False=pad
+    numeric_values: torch.FloatTensor  # [B, L]; train-normalized continuous values
+    numeric_missing_mask: torch.BoolTensor  # [B, L]; True only for missing numeric fields
     user_ids: torch.LongTensor        # [B]
-    targets: dict[str, torch.Tensor]  # pretraining labels/mask metadata
+    targets: dict[str, torch.Tensor]  # labels/mask metadata; includes validity masks
 ```
 
 Encoding rules:
@@ -174,6 +176,11 @@ Encoding rules:
   Đây là unordered set: không gán position theo thứ tự cột.
 - Sequence: `key=<event_type>`, `value=<event entity/value>`,
   `source="sequence"`; gán ordered position và time-gap bucket.
+- Context/action JSON phải đi qua allowlist theo scenario; list payload như
+  OmniBehavior `action.content` (role/content messages) mặc định bị loại khỏi
+  MVP bằng `TokenizerConfig.include_action_content=False`. Nếu bật cho ablation,
+  phải flatten deterministic theo role và thứ tự message, sau đó giới hạn 256 ký
+  tự bằng head+tail truncation; không được implicit `str(list)`.
 - Layout luôn là `[CLS] [tabular...] [SEP] [event sequence...] [PAD...]`.
 - Special IDs phải cố định: `PAD=0`, `CLS=1`, `SEP=2`, `MASK=3`, `UNK=4`.
 - Vocab, scaler, bucket boundary và taxonomy chỉ fit trên train. Val/test chỉ
@@ -208,10 +215,10 @@ weights, token positions hoặc forward hooks từ downstream code.
 ### 4.3 Architecture quyết định trước
 
 1. Adapter categorical: embedding lookup.
-2. Adapter numerical: normalized float + missing flag, MLP/projection.
+2. Adapter numeric: normalized float + missing flag qua MLP/projection; bucket ID vẫn giữ cho masked-value objective.
 3. Adapter text: local deterministic tokenizer/hash + embedding; không tải
    model từ Internet.
-4. Adapter geo: grid/geohash rút gọn kết hợp normalized lat/lon/Fourier feature.
+4. Adapter geo: chỉ bật khi selected pretrain manifest thực sự có latitude/longitude; current OmniBehavior/Meituan v2 không có geo business fields được allowlist.
 5. Mọi adapter qua alignment projection về `d_model`.
 6. Transformer có hai mode:
    - `bidirectional`: masked-value reconstruction;
@@ -230,12 +237,14 @@ L = w_mask * L_masked_value + w_key * L_next_key + w_value * L_next_value
 
 - Chỉ mask token hợp lệ; không mask `PAD`, `CLS`, `SEP`.
 - `L_masked_value`: reconstruct value đúng modality.
-- `L_next_key`: CE dự đoán event type tiếp theo.
+- `L_next_key`: CE dự đoán `event.event_type` tiếp theo; không dùng `action.type` như success label.
 - `L_next_value`: head đúng modality của event tiếp theo.
 - Categorical/ID: CE. MVP ID scalable qua hierarchical head `group -> local`.
-- Numeric và geo: MSE. Text token vocabulary nhỏ: CE.
+- Numeric bucket IDs vẫn dùng CE như categorical cho masked-value objective; full numeric dùng MSE trên `numeric_values` với `numeric_missing_mask`; geo chỉ có loss khi geo contract được bật. Text hash/token IDs dùng CE.
 - Loss component nào không có target trong batch phải log rõ `count=0`, không
   tạo NaN hoặc silently bỏ qua toàn batch.
+- Next-action loss phải dùng `targets["next_action_valid_mask"]`; giá trị target `0`
+  ở sample không đủ điều kiện không được coi là class thật.
 
 ### 4.5 Checkpoint contract
 
@@ -442,7 +451,7 @@ baseline/evaluation, config.
 
 1. `FoundationModelConfig` dataclass: `d_model`, heads, layers, dropout,
    vocabulary sizes, max length, dimensions adapter.
-2. Adapter registry cho categorical/numerical/text/geo và alignment projection.
+2. Adapter registry cho categorical/numeric/text/missing và alignment projection; geo là optional extension gated by data.
 3. User-ID/key/source embeddings; position/time-gap chỉ áp dụng sequence.
 4. Attention-mask builder cho `bidirectional` và `next_action`; document rõ
    quy ước mask của PyTorch để tránh đảo `True/False`.
@@ -655,8 +664,10 @@ Chỉ nhận MVP khi tất cả đúng:
   metrics trên đúng exposure policy với ad baseline;
 - mỗi experiment record có data/preprocess version, split, seed, checkpoint,
   candidate/exposure policy, negative/missing-click handling;
-- cross-service test xác nhận event ride/location/food trước cutoff có thể là
-  context, nhưng event/click/label tương lai không thể lọt vào input.
+- pretrain-v2 test xác nhận các scenario hiện có (Advertisement, Live Streaming,
+  Video Browsing, E-commerce, Customer Service, Search Behavior) không leak
+  event/profile sau cutoff; ride/location chỉ được test khi một future dataset
+  contract thực sự cung cấp các field đó.
 
 ## 9. Backlog, không chặn MVP
 
