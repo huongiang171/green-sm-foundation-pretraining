@@ -3,7 +3,22 @@ from __future__ import annotations
 import pytest
 import torch
 
+from src.foundation_input.types import FoundationBatch
 from src.models.adapters import AdapterRegistry, GeoAdapter, UserIdAdapter
+
+
+def _three_modality_batch() -> FoundationBatch:
+    return FoundationBatch(
+        input_ids=torch.tensor([[1, 9, 9, 9, 2]], dtype=torch.long),
+        key_ids=torch.tensor([[0, 3, 3, 3, 0]], dtype=torch.long),
+        modality_ids=torch.tensor([[0, 1, 2, 3, 0]], dtype=torch.long),
+        source_ids=torch.tensor([[0, 2, 2, 2, 0]], dtype=torch.long),
+        position_ids=torch.zeros((1, 5), dtype=torch.long),
+        time_gap_ids=torch.zeros((1, 5), dtype=torch.long),
+        attention_mask=torch.ones((1, 5), dtype=torch.bool),
+        user_ids=torch.tensor([1], dtype=torch.long),
+        targets={},
+    )
 
 
 def test_pair_keying_distinguishes_reused_value_ids(batch_factory, model_config) -> None:
@@ -16,6 +31,36 @@ def test_pair_keying_distinguishes_reused_value_ids(batch_factory, model_config)
     representations = AdapterRegistry(model_config())(batch)
 
     assert not torch.equal(representations[0, 1], representations[0, 3])
+
+
+def test_registry_routes_categorical_numeric_and_text_to_distinct_projections(
+    model_config,
+) -> None:
+    config = model_config(modality_vocab_size=4)
+    registry = AdapterRegistry(config).eval()
+    with torch.no_grad():
+        for embedding in (
+            registry.value_embedding,
+            registry.pair_embedding,
+            registry.key_embedding,
+            registry.modality_embedding,
+            registry.source_embedding,
+            registry.position_embedding,
+            registry.time_gap_embedding,
+        ):
+            embedding.weight.zero_()
+        registry.value_embedding.weight[9].fill_(1.0)
+        for projection in registry.modality_projections:
+            projection.weight.zero_()
+        registry.modality_projections[1].weight.copy_(torch.eye(config.d_model))
+        registry.modality_projections[2].weight.copy_(2.0 * torch.eye(config.d_model))
+        registry.modality_projections[3].weight.copy_(3.0 * torch.eye(config.d_model))
+
+    output = registry(_three_modality_batch())
+
+    torch.testing.assert_close(output[0, 1], torch.ones(config.d_model))
+    torch.testing.assert_close(output[0, 2], torch.full((config.d_model,), 2.0))
+    torch.testing.assert_close(output[0, 3], torch.full((config.d_model,), 3.0))
 
 
 def test_large_hashed_user_id_is_mapped_inside_embedding_range() -> None:
