@@ -53,6 +53,18 @@ def _default_numeric_policy(key: str, values: list[float]) -> str:
     return "zscore"
 
 
+def _tokenizer_contract(config: Any) -> dict[str, object]:
+    return {
+        "context_allowlist": {
+            key: list(config.context_allowlist[key]) for key in sorted(config.context_allowlist)
+        },
+        "include_action_content": config.include_action_content,
+        "max_text_chars": config.max_text_chars,
+        "numeric_fields": [list(field) for field in sorted(config.numeric_fields)],
+        "time_gap_boundaries_seconds": list(config.time_gap_boundaries_seconds),
+    }
+
+
 @dataclass
 class VocabularyArtifacts:
     dataset_name: str
@@ -70,6 +82,11 @@ class VocabularyArtifacts:
     numeric_field_registry: tuple[tuple[str, str], ...] = ()
     numeric_transform_policy: dict[str, str] = field(default_factory=dict)
     time_gap_boundaries_seconds: tuple[float, ...] = ()
+    tokenizer_contract: dict[str, object] = field(default_factory=dict)
+
+    def validate_tokenizer_config(self, config: Any) -> None:
+        if self.tokenizer_contract and self.tokenizer_contract != _tokenizer_contract(config):
+            raise ValueError("TokenizerConfig does not match vocabulary tokenizer contract")
 
     def model_cardinalities(self) -> dict[str, int]:
         value_max = max(SPECIAL_TOKEN_IDS.values(), default=0)
@@ -164,6 +181,7 @@ class VocabularyArtifacts:
             "numeric_field_registry": [list(item) for item in self.numeric_field_registry],
             "numeric_transform_policy": self.numeric_transform_policy,
             "time_gap_boundaries_seconds": list(self.time_gap_boundaries_seconds),
+            "tokenizer_contract": self.tokenizer_contract,
         }
 
     def save(self, path: str | Path) -> None:
@@ -216,6 +234,7 @@ class VocabularyArtifacts:
             time_gap_boundaries_seconds=tuple(
                 float(value) for value in payload.get("time_gap_boundaries_seconds", [])
             ),
+            tokenizer_contract=dict(payload.get("tokenizer_contract", {})),
         )
 
 
@@ -331,17 +350,19 @@ def fit_vocabulary_from_samples(
                 f"sample dataset {sample.dataset_name!r}"
             )
         tokens.extend(semantic_tokens(sample, token_config))
+    config_policy = config.numeric_transform_policy
+    token_policy = token_config.numeric_transform_policy
+    if config_policy and token_policy and config_policy != token_policy:
+        raise ValueError("VocabularyConfig and TokenizerConfig numeric transform policies differ")
     config = replace(
         config,
-        numeric_transform_policy={
-            (source, key): policy
-            for (source, key), policy in getattr(token_config, "numeric_transform_policy", {}).items()
-        },
+        numeric_transform_policy=token_policy or config_policy,
         time_gap_boundaries_seconds=tuple(token_config.time_gap_boundaries_seconds),
         include_action_content=bool(token_config.include_action_content),
     )
-    return fit_vocabulary(
+    artifacts = fit_vocabulary(
         tokens,
         config,
         numeric_field_registry=token_config.numeric_fields,
     )
+    return replace(artifacts, tokenizer_contract=_tokenizer_contract(token_config))

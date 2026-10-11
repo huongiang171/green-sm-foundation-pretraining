@@ -1,10 +1,18 @@
 from __future__ import annotations
 
+from dataclasses import replace
 from datetime import datetime, timezone
+
+import pytest
 
 from src.foundation_input.tokenizer import TokenizerConfig, semantic_tokens, tokenize_sample
 from src.foundation_input.types import CanonicalSample, EventRecord
-from src.foundation_input.vocab import VocabularyConfig, fit_vocabulary
+from src.foundation_input.vocab import (
+    VocabularyArtifacts,
+    VocabularyConfig,
+    fit_vocabulary,
+    fit_vocabulary_from_samples,
+)
 
 from .fixtures.samples import sample_mapping
 
@@ -17,6 +25,14 @@ def _sample(profile: dict, events: tuple[EventRecord, ...]) -> CanonicalSample:
 def _event(**overrides) -> EventRecord:
     raw = sample_mapping("omnibehavior_v2")["events"][0]
     return EventRecord(**{**raw, **overrides})
+
+
+def _vocabulary_config() -> VocabularyConfig:
+    return VocabularyConfig(dataset_name="omnibehavior_v2")
+
+
+def _score_sample(value: float | None) -> CanonicalSample:
+    return _sample({"score": value}, (_event(),))
 
 
 def test_profile_column_order_does_not_change_tabular_token_set() -> None:
@@ -136,3 +152,52 @@ def test_unknown_history_order_does_not_create_factual_positions_or_gaps() -> No
     sequence = [record for record in records if record.token.source == "sequence"]
     assert {record.position_id for record in sequence} == {0}
     assert {record.time_gap_id for record in sequence} == {0}
+
+
+def test_artifact_rejects_mismatched_time_gap_boundaries() -> None:
+    config = TokenizerConfig(time_gap_boundaries_seconds=(60.0, 300.0))
+    artifacts = fit_vocabulary_from_samples([_score_sample(1.0)], _vocabulary_config(), config)
+
+    with pytest.raises(ValueError, match="TokenizerConfig"):
+        tokenize_sample(
+            _score_sample(1.0), artifacts, TokenizerConfig(time_gap_boundaries_seconds=(60.0,))
+        )
+
+
+def test_artifact_rejects_mismatched_numeric_registry() -> None:
+    config = TokenizerConfig(numeric_fields=frozenset({("tabular", "profile.score")}))
+    artifacts = fit_vocabulary_from_samples([_score_sample(1.0)], _vocabulary_config(), config)
+
+    with pytest.raises(ValueError, match="TokenizerConfig"):
+        tokenize_sample(
+            _score_sample(None), artifacts, TokenizerConfig(numeric_fields=frozenset())
+        )
+
+
+def test_vocabulary_config_policy_is_not_silently_overwritten() -> None:
+    artifacts = fit_vocabulary_from_samples(
+        [_score_sample(1.0)],
+        replace(
+            _vocabulary_config(),
+            numeric_transform_policy={("tabular", "profile.score"): "log1p_zscore"},
+        ),
+        TokenizerConfig(numeric_fields=frozenset({("tabular", "profile.score")})),
+    )
+
+    assert artifacts.numeric_transform_policy[
+        "omnibehavior_v2:tabular:numeric:profile.score"
+    ] == "log1p_zscore"
+
+
+def test_tokenizer_contract_round_trips(tmp_path) -> None:
+    config = TokenizerConfig(
+        context_allowlist={"Food": ("item_price",)},
+        max_text_chars=64,
+        numeric_fields=frozenset({("tabular", "profile.score")}),
+        time_gap_boundaries_seconds=(60.0, 300.0),
+    )
+    artifacts = fit_vocabulary_from_samples([_score_sample(1.0)], _vocabulary_config(), config)
+    path = tmp_path / "vocabulary.json"
+    artifacts.save(path)
+
+    assert VocabularyArtifacts.load(path).tokenizer_contract == artifacts.tokenizer_contract

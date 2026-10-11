@@ -273,6 +273,7 @@ def tokenize_sample(
             f"Vocabulary dataset {artifacts.dataset_name!r} does not match "
             f"sample dataset {sample.dataset_name!r}"
         )
+    artifacts.validate_tokenizer_config(config)
     if artifacts.include_action_content != config.include_action_content:
         raise ValueError(
             "Tokenizer action.content policy does not match vocabulary metadata: "

@@ -148,6 +148,7 @@ def test_foundation_dataset_streams_encoded_samples(tmp_path) -> None:
         str(tmp_path),
         "train",
         artifacts,
+        tokenizer_config=TokenizerConfig(),
         dataset_config=DatasetConfig(max_event_count=30, max_tokens=16),
     )
 
@@ -183,7 +184,9 @@ def test_foundation_dataset_does_not_keep_unbounded_sample_cache(tmp_path) -> No
         semantic_tokens(canonical, TokenizerConfig()),
         VocabularyConfig(dataset_name=canonical.dataset_name),
     )
-    dataset = FoundationPretrainDataset(str(tmp_path), "train", artifacts)
+    dataset = FoundationPretrainDataset(
+        str(tmp_path), "train", artifacts, tokenizer_config=TokenizerConfig()
+    )
 
     list(dataset)
 
