@@ -8,7 +8,7 @@ import math
 from bisect import bisect_right
 from collections import Counter, defaultdict
 from collections.abc import Iterable
-from dataclasses import dataclass
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import Any
 
@@ -24,6 +24,9 @@ class VocabularyConfig:
     fit_split: str = "train"
     source_schema_version: str = "omnibehavior_pretraining_v2"
     source_fingerprint: str | None = None
+    include_action_content: bool = False
+    numeric_transform_policy: dict[tuple[str, str], str] = field(default_factory=dict)
+    time_gap_boundaries_seconds: tuple[float, ...] = ()
 
 
 def _value_key(value: Any) -> str:
@@ -42,6 +45,14 @@ def _namespace(dataset_name: str, token: KeyValueToken) -> str:
     return f"{dataset_name}:{token.source}:{token.modality}:{token.key}"
 
 
+def _default_numeric_policy(key: str, values: list[float]) -> str:
+    lowered = key.lower()
+    skewed_markers = ("count", "_cnt", "duration", "price", "amount", "_amt")
+    if all(value >= 0 for value in values) and any(marker in lowered for marker in skewed_markers):
+        return "log1p_zscore"
+    return "zscore"
+
+
 @dataclass
 class VocabularyArtifacts:
     dataset_name: str
@@ -54,6 +65,50 @@ class VocabularyArtifacts:
     fit_split: str = "train"
     source_schema_version: str = "omnibehavior_pretraining_v2"
     source_fingerprint: str | None = None
+    include_action_content: bool = False
+    numeric_normalization: dict[str, tuple[float, float]] = field(default_factory=dict)
+    numeric_field_registry: tuple[tuple[str, str], ...] = ()
+    numeric_transform_policy: dict[str, str] = field(default_factory=dict)
+    time_gap_boundaries_seconds: tuple[float, ...] = ()
+
+    def model_cardinalities(self) -> dict[str, int]:
+        value_max = max(SPECIAL_TOKEN_IDS.values(), default=0)
+        for values in self.value_to_id.values():
+            value_max = max(value_max, max(values.values(), default=0))
+        for boundaries in self.numeric_boundaries.values():
+            value_max = max(value_max, SPECIAL_TOKEN_IDS["MASK"] + 2 + len(boundaries))
+        if self.text_hash_buckets:
+            value_max = max(
+                value_max,
+                SPECIAL_TOKEN_IDS["MASK"] + 2 + self.text_hash_buckets - 1,
+            )
+        special_max = max(SPECIAL_TOKEN_IDS.values(), default=0)
+        return {
+            "value_vocab_size": value_max + 1,
+            "key_vocab_size": max(special_max, max(self.key_to_id.values(), default=0)) + 1,
+            "modality_vocab_size": max(special_max, max(self.modality_to_id.values(), default=0)) + 1,
+            "source_vocab_size": max(special_max, max(self.source_to_id.values(), default=0)) + 1,
+            "time_gap_vocab_size": max(special_max, len(self.time_gap_boundaries_seconds)) + 1,
+            "text_hash_buckets": self.text_hash_buckets,
+        }
+
+    def normalize_numeric(self, token: KeyValueToken) -> tuple[float, bool]:
+        namespace = _namespace(self.dataset_name, token)
+        try:
+            value = float(token.value)
+        except (TypeError, ValueError):
+            return 0.0, True
+        if not math.isfinite(value):
+            return 0.0, True
+        center, scale = self.numeric_normalization.get(namespace, (0.0, 1.0))
+        policy = self.numeric_transform_policy.get(namespace, "zscore")
+        if policy == "log1p_zscore":
+            if value < 0:
+                return 0.0, True
+            value = math.log1p(value)
+        elif policy != "zscore":
+            raise ValueError(f"Unsupported numeric transform policy: {policy!r}")
+        return (value - center) / max(scale, 1e-6), False
 
     def encode_value(self, token: KeyValueToken) -> int:
         namespace = _namespace(self.dataset_name, token)
@@ -101,6 +156,14 @@ class VocabularyArtifacts:
             "fit_split": self.fit_split,
             "source_schema_version": self.source_schema_version,
             "source_fingerprint": self.source_fingerprint,
+            "include_action_content": self.include_action_content,
+            "numeric_normalization": {
+                key: [center, scale]
+                for key, (center, scale) in self.numeric_normalization.items()
+            },
+            "numeric_field_registry": [list(item) for item in self.numeric_field_registry],
+            "numeric_transform_policy": self.numeric_transform_policy,
+            "time_gap_boundaries_seconds": list(self.time_gap_boundaries_seconds),
         }
 
     def save(self, path: str | Path) -> None:
@@ -137,11 +200,30 @@ class VocabularyArtifacts:
                 payload.get("source_schema_version", "omnibehavior_pretraining_v2")
             ),
             source_fingerprint=payload.get("source_fingerprint"),
+            include_action_content=bool(payload.get("include_action_content", False)),
+            numeric_normalization={
+                str(namespace): (float(values[0]), float(values[1]))
+                for namespace, values in payload.get("numeric_normalization", {}).items()
+            },
+            numeric_field_registry=tuple(
+                (str(source), str(key))
+                for source, key in payload.get("numeric_field_registry", [])
+            ),
+            numeric_transform_policy={
+                str(namespace): str(policy)
+                for namespace, policy in payload.get("numeric_transform_policy", {}).items()
+            },
+            time_gap_boundaries_seconds=tuple(
+                float(value) for value in payload.get("time_gap_boundaries_seconds", [])
+            ),
         )
 
 
 def fit_vocabulary(
-    train_tokens: Iterable[KeyValueToken], config: VocabularyConfig
+    train_tokens: Iterable[KeyValueToken],
+    config: VocabularyConfig,
+    *,
+    numeric_field_registry: Iterable[tuple[str, str]] = (),
 ) -> VocabularyArtifacts:
     """Fit metadata from train tokens only; the iterable is never mutated."""
 
@@ -153,6 +235,7 @@ def fit_vocabulary(
     keys: set[str] = set()
     modalities: set[str] = set()
     sources: set[str] = set()
+    registry = tuple(sorted(set(numeric_field_registry)))
     for token in train_tokens:
         namespace = _namespace(config.dataset_name, token)
         keys.add(namespace)
@@ -187,6 +270,24 @@ def fit_vocabulary(
                 low + step * index for index in range(1, config.numeric_bucket_count)
             )
 
+    numeric_normalization: dict[str, tuple[float, float]] = {}
+    numeric_transform_policy: dict[str, str] = {}
+    registry_set = set(registry)
+    for namespace, values in numeric_values.items():
+        _, source, _, key = namespace.split(":", 3)
+        field_key = (source, key)
+        policy = config.numeric_transform_policy.get(field_key)
+        if policy is None:
+            policy = _default_numeric_policy(key, values)
+        if policy not in {"zscore", "log1p_zscore"}:
+            raise ValueError(f"Unsupported numeric transform policy: {policy!r}")
+        transformed = [math.log1p(value) for value in values] if policy == "log1p_zscore" else values
+        center = sum(transformed) / len(transformed)
+        variance = sum((value - center) ** 2 for value in transformed) / len(transformed)
+        numeric_normalization[namespace] = (center, math.sqrt(variance) or 1.0)
+        numeric_transform_policy[namespace] = policy
+        registry_set.add(field_key)
+
     return VocabularyArtifacts(
         dataset_name=config.dataset_name,
         value_to_id=value_to_id,
@@ -198,6 +299,11 @@ def fit_vocabulary(
         fit_split=config.fit_split,
         source_schema_version=config.source_schema_version,
         source_fingerprint=config.source_fingerprint,
+        include_action_content=config.include_action_content,
+        numeric_normalization=numeric_normalization,
+        numeric_field_registry=tuple(sorted(registry_set)),
+        numeric_transform_policy=numeric_transform_policy,
+        time_gap_boundaries_seconds=config.time_gap_boundaries_seconds,
     )
 
 
@@ -225,4 +331,17 @@ def fit_vocabulary_from_samples(
                 f"sample dataset {sample.dataset_name!r}"
             )
         tokens.extend(semantic_tokens(sample, token_config))
-    return fit_vocabulary(tokens, config)
+    config = replace(
+        config,
+        numeric_transform_policy={
+            (source, key): policy
+            for (source, key), policy in getattr(token_config, "numeric_transform_policy", {}).items()
+        },
+        time_gap_boundaries_seconds=tuple(token_config.time_gap_boundaries_seconds),
+        include_action_content=bool(token_config.include_action_content),
+    )
+    return fit_vocabulary(
+        tokens,
+        config,
+        numeric_field_registry=token_config.numeric_fields,
+    )

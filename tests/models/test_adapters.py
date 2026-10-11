@@ -16,6 +16,8 @@ def _three_modality_batch() -> FoundationBatch:
         position_ids=torch.zeros((1, 5), dtype=torch.long),
         time_gap_ids=torch.zeros((1, 5), dtype=torch.long),
         attention_mask=torch.ones((1, 5), dtype=torch.bool),
+        numeric_values=torch.zeros((1, 5), dtype=torch.float32),
+        numeric_missing_mask=torch.zeros((1, 5), dtype=torch.bool),
         user_ids=torch.tensor([1], dtype=torch.long),
         targets={},
     )

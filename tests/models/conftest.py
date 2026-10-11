@@ -28,6 +28,8 @@ def _batch_factory(*, two_tabular_tokens: bool = False) -> FoundationBatch:
         position_ids=torch.tensor([[0, 0, 0, 1, 2, 0, 0], [0, 0, 0, 0, 0, 0, 0]], dtype=torch.long),
         time_gap_ids=torch.tensor([[0, 0, 0, 0, 1, 0, 0], [0, 0, 0, 0, 0, 0, 0]], dtype=torch.long),
         attention_mask=torch.tensor(attention_mask, dtype=torch.bool),
+        numeric_values=torch.zeros((2, 7), dtype=torch.float32),
+        numeric_missing_mask=torch.zeros((2, 7), dtype=torch.bool),
         user_ids=torch.tensor([2**62 + 123, 5], dtype=torch.long),
         targets={},
     )

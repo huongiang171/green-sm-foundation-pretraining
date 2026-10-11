@@ -22,37 +22,35 @@
 - `FoundationOutput.hidden_states`, `long_term`, and `short_term` must be `torch.float32`, batch-aligned, and finite at every valid token. A malformed input must raise a contextual `ValueError`, never return a partial embedding.
 - In `eval()` mode, same model weights and same batch must produce the same output within `1e-6` on the same device.
 
-## Upstream Input-Contract Gates
+## Upstream Input-Contract Requirements
 
-The repository's actual `FoundationBatch` currently has only ID tensors (`input_ids`, `key_ids`, `modality_ids`, `source_ids`, `position_ids`, `time_gap_ids`), a validity mask, user IDs, and target metadata. It does **not** contain raw normalized numeric floats, numeric missing flags, or latitude/longitude tensors. `tokenizer.py` currently emits `categorical`, `numeric`, `text`, and `missing`; it does not emit `geo`.
+The checked-in source is still at the pre-extension state: `FoundationBatch` currently has only ID tensors (`input_ids`, `key_ids`, `modality_ids`, `source_ids`, `position_ids`, `time_gap_ids`), a validity mask, user IDs, and target metadata. The selected v2 contract adds required raw normalized numeric floats and numeric missing flags. It does **not** add latitude/longitude tensors because the current data has no geo business fields. `tokenizer.py` emits `categorical`, `numeric`, `text`, and `missing`; it does not emit `geo`.
 
 `sequence_source_id` is not a universal constant: Member 3 must take it from the selected artifact's `source_to_id["sequence"]` mapping, alongside returned cardinalities.
 
-Tasks 1–6 in this plan can be implemented against fixture batches immediately. Member 3 must not train a production foundation checkpoint until Member 1 has merged the following mandatory v1 repairs:
+Tasks 1–6 in this plan can be implemented against fixture batches immediately. Member 3 must not train a production foundation checkpoint until Member 1 has merged the following mandatory input-contract repairs:
 
 1. **Stable OOV user identity.** In `encode_sample`, set `user_id_value_id=None` when the `user_id` token is `UNK=4`; this makes the existing collator invoke `_stable_user_id(dataset_name, user_id)`. Retain a train-vocabulary ID only when it is not a special ID. Add a test with two validation users outside the train vocabulary and assert their `batch.user_ids` differ and are deterministic.
 2. **Safe next-action eligibility.** With `DatasetConfig.next_action_prediction=True`, reject a sample where `history_order_known=False`, where the final retained target event group is incomplete, or where fewer than two complete sequence event groups remain. The error must contain `sample_id` and the violated condition. An unordered history may still be used for bidirectional masked-value pretraining; it must not create a next-action target.
 3. **Group identity independent of temporal position.** Build `targets["event_group_ids"]` from a per-sample mapping of each retained `TokenRecord.token.event_group_id` to a nonzero group ID. Keep `position_ids=0` when history order is unknown, but never use position IDs as group IDs. This preserves coordinated masking without inventing temporal order.
 4. **Recent-event retention.** When token limits truncate a known event history, retain the most recent complete event groups, not the earliest groups. Reserve enough token budget for at least one sequence group; in next-action mode reserve two complete groups so one remains input context after the final group becomes the target. If a single event group cannot fit, reject that sample with its `sample_id`; do not split the group.
-5. **Published cardinalities.** Add `VocabularyArtifacts.model_cardinalities()` returning explicit `value_vocab_size`, `key_vocab_size`, `modality_vocab_size`, `source_vocab_size`, `time_gap_vocab_size`, and `text_hash_buckets`. Each returned vocabulary size is `max_possible_encoded_id + 1`, including special IDs, numeric bucket IDs, and text-hash IDs. Member 3 passes this dictionary to `FoundationModelConfig`; it must not use the count of Python dictionary entries as an embedding size.
+5. **Published cardinalities.** Add `VocabularyArtifacts.model_cardinalities()` returning explicit `value_vocab_size`, `key_vocab_size`, `modality_vocab_size`, `source_vocab_size`, `time_gap_vocab_size`, and `text_hash_buckets`. Each returned vocabulary size is `max_possible_encoded_id + 1`, including special IDs, numeric bucket IDs, and text-hash IDs. Member 3 passes only the supported `*_vocab_size` fields to `FoundationModelConfig`; `text_hash_buckets` is metadata unless the config explicitly accepts it. It must not use the count of Python dictionary entries as an embedding size.
 6. **One modality naming contract.** Document `numeric` as the canonical existing modality spelling, and document `missing` as a current ID-level modality. Do not have one teammate route `numerical` while another emits `numeric`.
 
-The current plan is otherwise a valid v1 MVP:
+After those repairs, this encoder consumes the selected full-numeric v2 contract:
 
-1. categorical, text, numeric, and missing tokens route through ID-based adapters; numeric values are the train-fitted buckets supplied by Member 1, not a raw-value MLP;
+1. categorical, text, and missing tokens route through ID-based adapters; numeric values use Member 1's train-normalized continuous payload plus missing mask through a numeric MLP, while bucket IDs remain available for masked-value objectives;
 2. `input_ids` are reused per vocabulary namespace, so a categorical representation is keyed by the deterministic pair `(key_id, input_id)`, not `input_id` alone;
 3. the Member 2 `UserIdAdapter` still maps every stable ID into `num_user_buckets` with `torch.remainder`;
 4. no geo token is routed because the current input data does not provide it.
 
-### Full-modality extension: only when Data provides geo
+### Selected full-numeric handoff
 
-The paper-faithful raw-numeric/geo path is a separate Member 1 + Data-team change, not a hidden requirement for the v1 checkpoint:
+- Member 1 adds required `numeric_values: FloatTensor [B,L]` and `numeric_missing_mask: BoolTensor [B,L]` to `FoundationBatch`. Numeric normalization statistics and transform policies are fit only on train and serialized with vocabulary metadata. Missing values are represented by a finite zero payload plus their mask, never NaN.
+- Member 2 adds `normalized float + missing flag -> MLP` for numeric tokens. Categorical/text/missing pair-ID routing, masks, Transformer, pooling, and public output API do not change.
+- Geo remains unsupported until Data confirms meaningful latitude/longitude. Member 1 must not manufacture coordinates.
 
-- If Data confirms meaningful latitude/longitude, Member 1 adds `numeric_values: FloatTensor [B,L]`, `numeric_missing_mask: BoolTensor [B,L]`, `geo_values: FloatTensor [B,L,2]`, and `geo_missing_mask: BoolTensor [B,L]` to `FoundationBatch`. Numeric normalization statistics and coordinate normalization parameters are fit only on train and serialized with vocabulary metadata. Missing values are represented by a finite zero payload plus their mask, never NaN.
-- Member 2 then replaces only the numeric ID adapter route with `normalized float + missing flag -> MLP` and enables `GeoAdapter` routing. Categorical/text pair-ID routing, masks, Transformer, pooling, and public output API do not change.
-- If Data has no meaningful location fields, the contract remains v1 and the MVP documentation explicitly says geo is unsupported. Member 1 must not manufacture coordinates.
-
-Record the chosen v1 or full-modality extension in the encoder PR description and ask Member 1 and Member 3 to acknowledge it before merge.
+Record the selected full-numeric v2 contract in the encoder PR description and ask Member 1 and Member 3 to acknowledge the required constructor change before merge.
 
 ## File Structure
 
@@ -80,7 +78,7 @@ tests/models/
 - Modify: `src/models/encoder.py`
 
 **Interfaces:**
-- Consumes: `src.foundation_input.types.FoundationBatch` exactly as currently defined.
+- Consumes: `src.foundation_input.types.FoundationBatch` v2 after Member 1's numeric extension is merged.
 - Produces: `FoundationModelConfig` and `FoundationOutput`, imported later as `from src.models.encoder import FoundationModelConfig, FoundationOutput`.
 
 - [ ] **Step 1: Write failing configuration and batch-contract tests**
@@ -102,7 +100,7 @@ def test_config_rejects_unknown_default_attention_mode() -> None:
         FoundationModelConfig(default_attention_mode="causal")
 ```
 
-Create `batch_factory()` in `conftest.py`. It must return a real CPU `FoundationBatch` of shape `[2, 7]` with layout `[CLS, tabular, SEP, event-1, event-2, PAD, PAD]` for row zero and a zero-event row one. With the current sorted fixture vocabulary, use source ID `1` for sequence and `2` for tabular. Make every tensor explicit and use `torch.long` for IDs and `torch.bool` for the attention mask. Also create `model_config(**overrides)` returning `FoundationModelConfig(d_model=16, num_heads=4, num_layers=2, dropout=0.0, value_vocab_size=64, key_vocab_size=32, modality_vocab_size=8, source_vocab_size=4, time_gap_vocab_size=8, num_user_buckets=17, categorical_pair_buckets=97, sequence_source_id=1, **overrides)` so every test has valid ID-table capacity.
+Create `batch_factory()` in `conftest.py`. It must return a real CPU `FoundationBatch` v2 of shape `[2, 7]` with layout `[CLS, tabular, SEP, event-1, event-2, PAD, PAD]` for row zero and a zero-event row one. With the current sorted fixture vocabulary, use source ID `1` for sequence and `2` for tabular. Make every tensor explicit: IDs are `torch.long`, the attention and numeric missing masks are `torch.bool`, and `numeric_values` is `torch.float32`. Also create `model_config(**overrides)` returning `FoundationModelConfig(d_model=16, num_heads=4, num_layers=2, dropout=0.0, value_vocab_size=64, key_vocab_size=32, modality_vocab_size=8, source_vocab_size=4, time_gap_vocab_size=8, num_user_buckets=17, categorical_pair_buckets=97, sequence_source_id=1, **overrides)` so every test has valid ID-table capacity.
 
 - [ ] **Step 2: Run the test to verify it fails**
 
@@ -796,10 +794,10 @@ State that `long_term` is a hashed-bucket User-ID embedding and `short_term` is 
 ```text
 Production training is gated on Member 1's stable OOV user IDs, next-action eligibility,
 independent event-group IDs, recent-event retention, published vocabulary cardinalities,
-and one documented modality spelling.
-FoundationBatch v1 supplies train-fitted numeric bucket IDs and no geo tensors, so this
-encoder uses ID/bucket adapters. Raw numeric MLP and routed geo are enabled only if the
-Data team supplies meaningful coordinates and Member 1 ships the documented extension.
+one documented modality spelling, and the selected FoundationBatch v2 numeric tensors.
+This encoder uses the numeric MLP route from normalized floats plus the missing mask.
+Geo remains unsupported because the current pretrain manifests do not supply meaningful
+latitude/longitude fields.
 ```
 
 - [ ] **Step 4: Open the PR only after the checks pass**
@@ -821,7 +819,7 @@ Expected: tests/lint PASS and no generated data, checkpoints, test cache, or exp
 - `FoundationModel`, `FoundationOutput`, `encode`, `embed_users`, `long_term`, `short_term`, and zero-event fallback: Tasks 3 and 5.
 - Required CPU shape/finite/routing/padding/tabular-permutation/future-event/zero-event tests: Tasks 2–7.
 - Strict ownership and no changes to data, training, downstream, baseline, evaluator, or configs: Global Constraints and Task 8.
-- The specification's raw numeric and geo architecture is represented honestly by the Upstream Input-Contract Gates; it cannot be implemented end-to-end without Data-provided coordinates and a Member 1 contract extension.
+- The selected raw-numeric architecture is covered by the v2 handoff; geo remains explicitly conditional on a future Data contract and is not part of this implementation.
 
 ## Execution Handoff
 
