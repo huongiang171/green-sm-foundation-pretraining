@@ -10,7 +10,7 @@ from typing import Any
 from .loader import iter_normalized_samples
 from .manifest import load_manifest
 from .tokenizer import TokenizerConfig, tokenize_sample
-from .types import EncodedSample, FoundationBatch, TokenRecord
+from .types import SPECIAL_TOKEN_IDS, EncodedSample, FoundationBatch, TokenRecord
 from .vocab import VocabularyArtifacts
 
 
@@ -29,13 +29,31 @@ def _truncate_records(records: list[TokenRecord], config: DatasetConfig) -> tupl
         if not groups or groups[-1][0].token.event_group_id != record.token.event_group_id:
             groups.append([])
         groups[-1].append(record)
-    kept_groups = groups[: config.max_event_count]
     record_budget = max(0, config.max_tokens - 2)
-    selected = tabular[:record_budget]
-    for group in kept_groups:
-        if len(selected) + len(group) > record_budget:
+    if record_budget == 0:
+        return ()
+
+    kept_groups = groups[-config.max_event_count :] if config.max_event_count > 0 else []
+    reserved_tabular = 1 if tabular and kept_groups else 0
+    remaining_event_budget = max(0, record_budget - reserved_tabular)
+    selected_groups: list[list[TokenRecord]] = []
+    for group in reversed(kept_groups):
+        if len(group) <= remaining_event_budget:
+            selected_groups.append(group)
+            remaining_event_budget -= len(group)
+        elif not selected_groups and remaining_event_budget > 0:
+            # Keep at least one token from the most recent event when a full
+            # group cannot fit in the token budget.
+            selected_groups.append(group[:remaining_event_budget])
+            remaining_event_budget = 0
             break
-        selected.extend(group)
+        else:
+            break
+    selected_groups.reverse()
+    event_records = [record for group in selected_groups for record in group]
+    tabular_budget = record_budget - len(event_records)
+    selected = tabular[:tabular_budget]
+    selected.extend(event_records)
     return tuple(selected)
 
 
@@ -51,7 +69,11 @@ def encode_sample(
     )
     selected = _truncate_records(records, dataset_config)
     next_action_records: tuple[TokenRecord, ...] = ()
-    if dataset_config.next_action_prediction:
+    if (
+        dataset_config.next_action_prediction
+        and sample.history_order_known
+        and not sample.history_group_truncated
+    ):
         sequence_groups: list[list[TokenRecord]] = []
         for record in selected:
             if record.token.source != "sequence":
@@ -59,17 +81,23 @@ def encode_sample(
             if not sequence_groups or sequence_groups[-1][0].token.event_group_id != record.token.event_group_id:
                 sequence_groups.append([])
             sequence_groups[-1].append(record)
-        if sequence_groups:
+        if len(sequence_groups) >= 2:
             target_group = sequence_groups[-1]
             target_ids = {id(record) for record in target_group}
             selected = tuple(record for record in selected if id(record) not in target_ids)
             next_action_records = tuple(target_group)
+    safe_user_id_value_id = (
+        None
+        if user_id_record is None
+        or user_id_record.value_id == SPECIAL_TOKEN_IDS["UNK"]
+        else user_id_record.value_id
+    )
     return EncodedSample(
         sample_id=sample.sample_id,
         dataset_name=sample.dataset_name,
         user_id=sample.user_id,
         records=selected,
-        user_id_value_id=user_id_record.value_id if user_id_record is not None else None,
+        user_id_value_id=safe_user_id_value_id,
         next_action_records=next_action_records,
     )
 
@@ -141,10 +169,19 @@ def foundation_collate(
     backend = tensor_backend or _default_tensor_backend()
 
     rows: list[dict[str, list[int | bool]]] = []
+    numeric_rows: list[list[float]] = []
+    numeric_missing_rows: list[list[bool]] = []
     next_action_type_ids: list[int] = []
     next_action_group_ids: list[int] = []
+    next_action_valid_mask: list[bool] = []
     for sample in samples:
         next_action = sample.next_action_records
+        group_to_id: dict[str, int] = {}
+        for record in (*sample.records, *next_action):
+            if record.token.source != "sequence":
+                continue
+            group = record.token.event_group_id or "<missing-event-group>"
+            group_to_id.setdefault(group, len(group_to_id) + 1)
         target_record_ids = {id(record) for record in next_action}
         tabular = [
             record
@@ -163,6 +200,8 @@ def foundation_collate(
         position_ids = [0]
         time_gap_ids = [0]
         group_ids = [0]
+        numeric_values = [0.0]
+        numeric_missing = [False]
         input_ids.extend(record.value_id for record in tabular)
         key_ids.extend(record.key_id for record in tabular)
         modality_ids.extend(record.modality_id for record in tabular)
@@ -170,6 +209,8 @@ def foundation_collate(
         position_ids.extend(record.position_id for record in tabular)
         time_gap_ids.extend(record.time_gap_id for record in tabular)
         group_ids.extend(0 for _ in tabular)
+        numeric_values.extend(record.numeric_value for record in tabular)
+        numeric_missing.extend(record.numeric_missing for record in tabular)
         input_ids.append(2)
         key_ids.append(0)
         modality_ids.append(0)
@@ -177,6 +218,8 @@ def foundation_collate(
         position_ids.append(0)
         time_gap_ids.append(0)
         group_ids.append(0)
+        numeric_values.append(0.0)
+        numeric_missing.append(False)
         for record in sequence:
             input_ids.append(record.value_id)
             key_ids.append(record.key_id)
@@ -184,7 +227,11 @@ def foundation_collate(
             source_ids.append(record.source_id)
             position_ids.append(record.position_id)
             time_gap_ids.append(record.time_gap_id)
-            group_ids.append(record.position_id)
+            group_ids.append(
+                group_to_id[record.token.event_group_id or "<missing-event-group>"]
+            )
+            numeric_values.append(record.numeric_value)
+            numeric_missing.append(record.numeric_missing)
         rows.append(
             {
                 "input_ids": input_ids,
@@ -196,6 +243,8 @@ def foundation_collate(
                 "group_ids": group_ids,
             }
         )
+        numeric_rows.append(numeric_values)
+        numeric_missing_rows.append(numeric_missing)
         target_type = next(
             (
                 record.value_id
@@ -205,7 +254,12 @@ def foundation_collate(
             0,
         )
         next_action_type_ids.append(target_type)
-        next_action_group_ids.append(next_action[0].position_id if next_action else 0)
+        next_action_group_ids.append(
+            group_to_id[next_action[0].token.event_group_id or "<missing-event-group>"]
+            if next_action
+            else 0
+        )
+        next_action_valid_mask.append(bool(next_action))
 
     max_length = max(len(row["input_ids"]) for row in rows)
     padded: dict[str, list[list[int | bool]]] = {}
@@ -223,6 +277,12 @@ def foundation_collate(
         [True] * len(row["input_ids"]) + [False] * (max_length - len(row["input_ids"]))
         for row in rows
     ]
+    padded_numeric = [
+        row + [0.0] * (max_length - len(row)) for row in numeric_rows
+    ]
+    padded_numeric_missing = [
+        row + [False] * (max_length - len(row)) for row in numeric_missing_rows
+    ]
     tensor = backend.tensor
     return FoundationBatch(
         input_ids=tensor(padded["input_ids"], dtype=backend.long),
@@ -232,6 +292,8 @@ def foundation_collate(
         position_ids=tensor(padded["position_ids"], dtype=backend.long),
         time_gap_ids=tensor(padded["time_gap_ids"], dtype=backend.long),
         attention_mask=tensor(padded["attention_mask"], dtype=backend.bool),
+        numeric_values=tensor(padded_numeric, dtype=backend.float32),
+        numeric_missing_mask=tensor(padded_numeric_missing, dtype=backend.bool),
         user_ids=tensor(
             [
                 [
@@ -247,5 +309,6 @@ def foundation_collate(
             "event_group_ids": tensor(padded["group_ids"], dtype=backend.long),
             "next_action_type_ids": tensor(next_action_type_ids, dtype=backend.long),
             "next_action_group_ids": tensor(next_action_group_ids, dtype=backend.long),
+            "next_action_valid_mask": tensor(next_action_valid_mask, dtype=backend.bool),
         },
     )

@@ -43,6 +43,31 @@ def test_numeric_values_use_train_fitted_boundaries() -> None:
     assert artifacts.encode_value(_token("event_count", 3, "numeric")) != SPECIAL_TOKEN_IDS["UNK"]
 
 
+def test_model_cardinalities_and_numeric_metadata_are_persisted(tmp_path: Path) -> None:
+    artifacts = fit_vocabulary(
+        [_token("profile.score", value, "numeric") for value in (0.0, 2.0)],
+        VocabularyConfig(
+            dataset_name="omnibehavior_v2",
+            time_gap_boundaries_seconds=(60.0, 300.0),
+        ),
+        numeric_field_registry=(("tabular", "profile.score"),),
+    )
+
+    cardinalities = artifacts.model_cardinalities()
+    assert cardinalities["value_vocab_size"] > max(SPECIAL_TOKEN_IDS.values())
+    assert cardinalities["key_vocab_size"] >= max(artifacts.key_to_id.values()) + 1
+    assert artifacts.numeric_field_registry == (("tabular", "profile.score"),)
+    assert artifacts.numeric_normalization[
+        "omnibehavior_v2:tabular:numeric:profile.score"
+    ] == (1.0, 1.0)
+
+    path = tmp_path / "vocabulary.json"
+    artifacts.save(path)
+    loaded = artifacts.load(path)
+    assert loaded.model_cardinalities() == cardinalities
+    assert loaded.numeric_normalization == artifacts.numeric_normalization
+
+
 def test_text_values_use_deterministic_hash_buckets() -> None:
     artifacts = fit_vocabulary(
         [], VocabularyConfig(dataset_name="omnibehavior_v2", text_hash_buckets=32)

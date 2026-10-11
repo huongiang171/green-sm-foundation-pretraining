@@ -25,13 +25,23 @@ An `EventRecord` preserves `event_id`, `source_record_id`, source/action indices
 - Profile fields become unordered `source="tabular"` tokens with keys such as `profile.event_count_30d`.
 - Event fields become ordered `source="sequence"` tokens with keys such as `event.scenario`, `event.event_type`, `context.product_id`, and `action.click_cnt`.
 - Context fields are restricted to the dataset's `context_allowlist`.
+- `action.content` is excluded by default with `TokenizerConfig.include_action_content=False`;
+  enabling it is an explicit ablation and requires a separately fitted vocabulary.
 - Tokens preserve `event_group_id=source_record_id` for coordinated masking.
+- Numeric tokens carry a train-fitted normalized continuous value and an explicit
+  missing flag; zero is a valid observed value and is not equivalent to missing.
 - `as_of_time`, event IDs, source indices, eligibility flags, and other storage metadata are not business-value tokens.
 - Date-only/uncertain timestamps remain uncertain; no timezone or sub-day precision is invented.
 
 ## Vocabulary and numeric values
 
 Vocabulary, numeric boundaries, and normalization metadata are fit only from the selected dataset's logical `train` split through `fit_vocabulary_from_samples`. Validation and test are transform-only. The serialized vocabulary records its fit split, schema version, and optional source fingerprint. OOV values map to `UNK`.
+
+`numeric_values` and `numeric_missing_mask` are required `FoundationBatch` v2
+fields aligned with `input_ids`. Missing/non-finite numeric values use
+`numeric_values=0.0` and `numeric_missing_mask=True`; padding and non-numeric
+tokens use `0.0` and `False`. The normalization policy is per numeric field and
+must be serialized with the vocabulary.
 
 `order_price_interval` and other source buckets remain categorical values. They are never converted into exact monetary values.
 
@@ -43,6 +53,6 @@ Vocabulary, numeric boundaries, and normalization metadata are fit only from the
 
 Special IDs are fixed: `PAD=0`, `CLS=1`, `SEP=2`, `MASK=3`, `UNK=4`.
 
-`max_history_events=30` is an event-group limit. `max_tokens` is a separate token limit and truncation happens at event-group boundaries where possible.
+`max_history_events=30` in the source data is a limit on raw action observations, not tokens or event groups. `max_tokens` is a separate token limit; adapter truncation should preserve recent complete `source_record_id` groups where possible and retain `history_group_truncated` provenance when the source already contains a partial group.
 
-The collator returns `FoundationBatch` and includes `targets["event_group_ids"]` as provenance metadata. When `DatasetConfig.next_action_prediction=True`, the final retained event group is moved to an explicit target-only view (`next_action_records`), excluded from input, and exposed through `next_action_type_ids` and `next_action_group_ids`. This creates a training objective view; it does not claim that stored data contains labels or masks.
+The collator returns `FoundationBatch` and includes `targets["event_group_ids"]` as provenance metadata. When `DatasetConfig.next_action_prediction=True`, the final retained event group is moved to an explicit target-only view (`next_action_records`), excluded from input, and exposed through `next_action_type_ids`, `next_action_group_ids`, and `next_action_valid_mask`. The mask is false when order is uncertain, the source group is incomplete, or fewer than two complete groups remain. This creates a training objective view; it does not claim that stored data contains labels or masks.

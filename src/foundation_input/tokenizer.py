@@ -46,6 +46,11 @@ class TokenizerConfig:
         default_factory=lambda: dict(DEFAULT_CONTEXT_ALLOWLIST)
     )
     max_text_chars: int = 256
+    include_action_content: bool = False
+    numeric_fields: frozenset[tuple[str, str]] = field(
+        default_factory=lambda: DEFAULT_NUMERIC_FIELDS
+    )
+    numeric_transform_policy: dict[tuple[str, str], str] = field(default_factory=dict)
     time_gap_boundaries_seconds: tuple[float, ...] = (
         60.0,
         300.0,
@@ -71,9 +76,40 @@ _TEXT_FIELD_MARKERS = (
 )
 
 
-def _modality(key: str, value: Any) -> str:
+DEFAULT_NUMERIC_FIELDS: frozenset[tuple[str, str]] = frozenset(
+    {
+        ("tabular", "profile.active_days_30d"),
+        ("tabular", "profile.event_count_30d"),
+        ("tabular", "profile.video_browsing_event_count_30d"),
+        ("tabular", "profile.live_streaming_event_count_30d"),
+        ("tabular", "profile.e_commerce_event_count_30d"),
+        ("tabular", "profile.advertisement_event_count_30d"),
+        ("tabular", "profile.search_behavior_event_count_30d"),
+        ("tabular", "profile.customer_service_event_count_30d"),
+        ("sequence", "context.duration"),
+        ("sequence", "context.item_price"),
+        ("sequence", "action.comment_cnt"),
+        ("sequence", "action.conversion_cnt"),
+        ("sequence", "action.play_count"),
+        ("sequence", "action.play_duration"),
+        ("sequence", "action.played_loop_cnt"),
+        ("sequence", "action.show_cnt"),
+        ("sequence", "action.click_cnt"),
+        ("sequence", "action.item_cnt"),
+        ("sequence", "action.order_amt"),
+    }
+)
+
+
+def _modality(
+    key: str,
+    value: Any,
+    *,
+    source: str = "sequence",
+    numeric_fields: frozenset[tuple[str, str]] = frozenset(),
+) -> str:
     if value is None:
-        return "missing"
+        return "numeric" if (source, key) in numeric_fields else "missing"
     if isinstance(value, bool):
         return "categorical"
     lowered = key.lower()
@@ -86,9 +122,30 @@ def _modality(key: str, value: Any) -> str:
     return "categorical"
 
 
+def _flatten_text_value(value: Any) -> str:
+    if isinstance(value, list):
+        parts: list[str] = []
+        for item in value:
+            if isinstance(item, dict):
+                role = str(item.get("role", "unknown"))
+                content = str(item.get("content", ""))
+                parts.append(f"{role}: {content}")
+            else:
+                parts.append(str(item))
+        return "\n".join(parts)
+    if isinstance(value, dict):
+        return "\n".join(f"{key}: {value[key]}" for key in sorted(value))
+    return str(value)
+
+
 def _normalize_value(value: Any, modality: str, max_text_chars: int) -> Any:
     if modality == "text" and value is not None:
-        return str(value)[:max_text_chars]
+        text = _flatten_text_value(value)
+        if len(text) <= max_text_chars:
+            return text
+        head = max_text_chars // 2
+        tail = max_text_chars - head - 5
+        return f"{text[:head]} ... {text[-tail:]}"
     return value
 
 
@@ -101,8 +158,9 @@ def _append_token(
     timestamp: datetime | None,
     event_group_id: str | None,
     max_text_chars: int,
+    numeric_fields: frozenset[tuple[str, str]],
 ) -> None:
-    modality = _modality(key, value)
+    modality = _modality(key, value, source=source, numeric_fields=numeric_fields)
     output.append(
         KeyValueToken(
             key=key,
@@ -127,6 +185,7 @@ def semantic_tokens(sample: CanonicalSample, config: TokenizerConfig) -> list[Ke
         timestamp=None,
         event_group_id=None,
         max_text_chars=config.max_text_chars,
+        numeric_fields=config.numeric_fields,
     )
     for key in sorted(sample.profile):
         if key == "as_of_time":
@@ -139,6 +198,7 @@ def semantic_tokens(sample: CanonicalSample, config: TokenizerConfig) -> list[Ke
             timestamp=None,
             event_group_id=None,
             max_text_chars=config.max_text_chars,
+            numeric_fields=config.numeric_fields,
         )
 
     for event in sample.events:
@@ -150,6 +210,7 @@ def semantic_tokens(sample: CanonicalSample, config: TokenizerConfig) -> list[Ke
             timestamp=event.event_time,
             event_group_id=event.source_record_id,
             max_text_chars=config.max_text_chars,
+            numeric_fields=config.numeric_fields,
         )
         _append_token(
             tokens,
@@ -159,6 +220,7 @@ def semantic_tokens(sample: CanonicalSample, config: TokenizerConfig) -> list[Ke
             timestamp=event.event_time,
             event_group_id=event.source_record_id,
             max_text_chars=config.max_text_chars,
+            numeric_fields=config.numeric_fields,
         )
         allowlist = config.context_allowlist.get(event.scenario or "", ())
         for key in sorted(set(event.context).intersection(allowlist)):
@@ -170,8 +232,11 @@ def semantic_tokens(sample: CanonicalSample, config: TokenizerConfig) -> list[Ke
                 timestamp=event.event_time,
                 event_group_id=event.source_record_id,
                 max_text_chars=config.max_text_chars,
+                numeric_fields=config.numeric_fields,
             )
         for key in sorted(event.action):
+            if key == "content" and not config.include_action_content:
+                continue
             _append_token(
                 tokens,
                 key=f"action.{key}",
@@ -180,6 +245,7 @@ def semantic_tokens(sample: CanonicalSample, config: TokenizerConfig) -> list[Ke
                 timestamp=event.event_time,
                 event_group_id=event.source_record_id,
                 max_text_chars=config.max_text_chars,
+                numeric_fields=config.numeric_fields,
             )
     return tokens
 
@@ -206,6 +272,12 @@ def tokenize_sample(
         raise ValueError(
             f"Vocabulary dataset {artifacts.dataset_name!r} does not match "
             f"sample dataset {sample.dataset_name!r}"
+        )
+    if artifacts.include_action_content != config.include_action_content:
+        raise ValueError(
+            "Tokenizer action.content policy does not match vocabulary metadata: "
+            f"vocabulary={artifacts.include_action_content}, "
+            f"tokenizer={config.include_action_content}"
         )
     records: list[TokenRecord] = []
     event_positions: dict[str, int] = {}
@@ -243,6 +315,16 @@ def tokenize_sample(
                 source_id=artifacts.encode_source(token),
                 position_id=position_id,
                 time_gap_id=time_gap_id,
+                numeric_value=(
+                    artifacts.normalize_numeric(token)[0]
+                    if token.modality == "numeric"
+                    else 0.0
+                ),
+                numeric_missing=(
+                    artifacts.normalize_numeric(token)[1]
+                    if token.modality == "numeric"
+                    else False
+                ),
             )
         )
     return records
