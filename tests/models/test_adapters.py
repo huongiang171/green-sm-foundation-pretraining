@@ -23,6 +23,22 @@ def _three_modality_batch() -> FoundationBatch:
     )
 
 
+def _numeric_batch(value: float, missing: bool) -> FoundationBatch:
+    return FoundationBatch(
+        input_ids=torch.tensor([[1, 9, 8, 2]], dtype=torch.long),
+        key_ids=torch.tensor([[0, 3, 3, 0]], dtype=torch.long),
+        modality_ids=torch.tensor([[0, 3, 1, 0]], dtype=torch.long),
+        source_ids=torch.tensor([[0, 2, 2, 0]], dtype=torch.long),
+        position_ids=torch.zeros((1, 4), dtype=torch.long),
+        time_gap_ids=torch.zeros((1, 4), dtype=torch.long),
+        attention_mask=torch.ones((1, 4), dtype=torch.bool),
+        numeric_values=torch.tensor([[0.0, value, 777.0, 0.0]], dtype=torch.float32),
+        numeric_missing_mask=torch.tensor([[False, missing, False, False]], dtype=torch.bool),
+        user_ids=torch.tensor([1], dtype=torch.long),
+        targets={},
+    )
+
+
 def test_pair_keying_distinguishes_reused_value_ids(batch_factory, model_config) -> None:
     batch = batch_factory()
     batch.input_ids[0, 1] = 9
@@ -35,7 +51,7 @@ def test_pair_keying_distinguishes_reused_value_ids(batch_factory, model_config)
     assert not torch.equal(representations[0, 1], representations[0, 3])
 
 
-def test_registry_routes_categorical_numeric_and_text_to_distinct_projections(
+def test_registry_routes_categorical_text_and_numeric_mlp_through_distinct_projections(
     model_config,
 ) -> None:
     config = model_config(modality_vocab_size=4)
@@ -57,12 +73,48 @@ def test_registry_routes_categorical_numeric_and_text_to_distinct_projections(
         registry.modality_projections[1].weight.copy_(torch.eye(config.d_model))
         registry.modality_projections[2].weight.copy_(2.0 * torch.eye(config.d_model))
         registry.modality_projections[3].weight.copy_(3.0 * torch.eye(config.d_model))
+        first_numeric_layer = registry.numeric_mlp[0]
+        second_numeric_layer = registry.numeric_mlp[2]
+        first_numeric_layer.weight.zero_()
+        first_numeric_layer.bias.fill_(1.0)
+        second_numeric_layer.weight.copy_(torch.eye(config.d_model))
+        second_numeric_layer.bias.zero_()
 
     output = registry(_three_modality_batch())
 
     torch.testing.assert_close(output[0, 1], torch.ones(config.d_model))
     torch.testing.assert_close(output[0, 2], torch.full((config.d_model,), 2.0))
-    torch.testing.assert_close(output[0, 3], torch.full((config.d_model,), 3.0))
+    torch.testing.assert_close(
+        output[0, 3],
+        3.0 * torch.nn.functional.gelu(torch.ones(config.d_model)),
+    )
+
+
+def test_numeric_value_changes_only_the_numeric_token(model_config) -> None:
+    registry = AdapterRegistry(model_config()).eval()
+
+    first = registry(_numeric_batch(1.0, False))
+    changed = registry(_numeric_batch(99.0, False))
+
+    assert not torch.equal(first[0, 1], changed[0, 1])
+    torch.testing.assert_close(first[0, 2], changed[0, 2])
+
+
+def test_numeric_zero_and_missing_are_distinct(model_config) -> None:
+    registry = AdapterRegistry(model_config()).eval()
+
+    zero = registry(_numeric_batch(0.0, False))
+    missing = registry(_numeric_batch(0.0, True))
+
+    assert not torch.equal(zero[0, 1], missing[0, 1])
+
+
+def test_adapter_rejects_malformed_numeric_tensors(model_config) -> None:
+    batch = _numeric_batch(1.0, False)
+    batch.numeric_values = batch.numeric_values[:, :-1]
+
+    with pytest.raises(ValueError, match="numeric_values"):
+        AdapterRegistry(model_config())(batch)
 
 
 def test_large_hashed_user_id_is_mapped_inside_embedding_range() -> None:

@@ -24,9 +24,9 @@
 
 ## Upstream Input-Contract Requirements
 
-The checked-in source is still at the pre-extension state: `FoundationBatch` currently has only ID tensors (`input_ids`, `key_ids`, `modality_ids`, `source_ids`, `position_ids`, `time_gap_ids`), a validity mask, user IDs, and target metadata. The selected v2 contract adds required raw normalized numeric floats and numeric missing flags. It does **not** add latitude/longitude tensors because the current data has no geo business fields. `tokenizer.py` emits `categorical`, `numeric`, `text`, and `missing`; it does not emit `geo`.
+The checked-in source implements `FoundationBatch` v2: alongside ID tensors (`input_ids`, `key_ids`, `modality_ids`, `source_ids`, `position_ids`, `time_gap_ids`), validity mask, user IDs, and target metadata, it carries required raw normalized numeric floats and numeric missing flags. `AdapterRegistry` routes the canonical `numeric` modality through a raw-value-plus-missingness MLP. The batch does **not** add latitude/longitude tensors because the current data has no geo business fields; `tokenizer.py` emits `categorical`, `numeric`, `text`, and `missing`, but not `geo`.
 
-`sequence_source_id` is not a universal constant: Member 3 must take it from the selected artifact's `source_to_id["sequence"]` mapping, alongside returned cardinalities.
+`sequence_source_id` and `numeric_modality_id` are not universal constants: Member 3 must take them from the selected artifact's `source_to_id["sequence"]` and `modality_to_id["numeric"]` mappings, alongside returned cardinalities.
 
 Tasks 1–6 in this plan can be implemented against fixture batches immediately. Member 3 must not train a production foundation checkpoint until Member 1 has merged the following mandatory input-contract repairs:
 
