@@ -479,6 +479,32 @@ baseline/evaluation, config.
 **Không chạm:** input adapter/encoder internals, Data/Baseline team files,
 Ad task config/module/tests.
 
+### Foundation v2 startup gate (required before pretraining)
+
+Member 3 must not start production pretraining from default IDs or a recount of
+the vocabulary. Every run must:
+
+1. Record `vocabulary_artifact_path`, SHA-256 checksum, `dataset_name`,
+   `fit_split`, schema version, and source fingerprint in run-manifest and
+   checkpoint metadata.
+2. Construct `FoundationModelConfig` from `artifacts.model_cardinalities()` and
+   pass **exactly** `artifacts.source_to_id["sequence"]` as
+   `sequence_source_id` and `artifacts.modality_to_id["numeric"]` as
+   `numeric_modality_id`. Neither ID may be hard-coded: both belong to the
+   selected vocabulary artifact.
+3. Use the same artifact's tokenizer contract with `FoundationPretrainDataset`.
+   Any tokenizer-contract mismatch or `FoundationBatch`/model dtype, shape, or
+   finite-value validation error aborts startup before the first optimizer step.
+4. Pass `targets["next_action_valid_mask"]` into next-action loss. Target `0`
+   in a false-mask row is a sentinel, never a class. Log
+   `next_action_valid_count / batch_size` per batch and aggregate it per epoch;
+   false-mask rows may still contribute to other objectives.
+
+Only after this gate passes may Member 3 train/checkpoint the foundation model
+and pass `long_term` and `short_term` to Food Recommendation. The Baseline team
+continues to own baselines, evaluation, and metrics; downstream code must not
+reimplement them.
+
 ### Deliverables — pretraining
 
 1. `PretrainingObjective` nhận `(FoundationOutput, FoundationBatch)` và trả
