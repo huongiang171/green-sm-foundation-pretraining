@@ -244,7 +244,8 @@ L = w_mask * L_masked_value + w_key * L_next_key + w_value * L_next_value
 - Loss component nào không có target trong batch phải log rõ `count=0`, không
   tạo NaN hoặc silently bỏ qua toàn batch.
 - Next-action loss phải dùng `targets["next_action_valid_mask"]`; giá trị target `0`
-  ở sample không đủ điều kiện không được coi là class thật.
+  ở sample không đủ điều kiện là sentinel, không được coi là class thật. Sample mask false
+  vẫn có thể đóng góp cho các objective khác.
 
 ### 4.5 Checkpoint contract
 
