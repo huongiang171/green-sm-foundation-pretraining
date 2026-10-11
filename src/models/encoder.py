@@ -22,17 +22,19 @@ class FoundationModelConfig:
     num_layers: int = 4
     dropout: float = 0.1
     max_length: int = 256
-    value_vocab_size: int = 50_007
-    key_vocab_size: int = 1
-    modality_vocab_size: int = 1
-    source_vocab_size: int = 1
-    time_gap_vocab_size: int = 8
+    value_vocab_size: int | None = None
+    key_vocab_size: int | None = None
+    modality_vocab_size: int | None = None
+    source_vocab_size: int | None = None
+    time_gap_vocab_size: int | None = None
     num_user_buckets: int = 50_000
     categorical_pair_buckets: int = 100_003
-    sequence_source_id: int = 2
+    sequence_source_id: int | None = None
     default_attention_mode: str = "bidirectional"
 
     def __post_init__(self) -> None:
+        if self.num_heads <= 0:
+            raise ValueError(f"num_heads must be positive, got {self.num_heads}")
         if self.d_model <= 0 or self.d_model % self.num_heads != 0:
             raise ValueError(
                 f"d_model={self.d_model} must be positive and divisible by "
@@ -44,12 +46,27 @@ class FoundationModelConfig:
             raise ValueError("dropout must be in [0.0, 1.0)")
         if self.default_attention_mode not in {"bidirectional", "next_action"}:
             raise ValueError("default_attention_mode must be bidirectional or next_action")
-        for name in (
+        metadata = (
             "value_vocab_size",
             "key_vocab_size",
             "modality_vocab_size",
             "source_vocab_size",
             "time_gap_vocab_size",
+            "sequence_source_id",
+        )
+        for name in metadata:
+            if getattr(self, name) is None:
+                raise ValueError(f"{name} must be supplied from vocabulary metadata")
+        for name in metadata[:-1]:
+            if getattr(self, name) <= 0:
+                raise ValueError(f"{name} must be positive")
+        if not 0 <= self.sequence_source_id < self.source_vocab_size:
+            raise ValueError(
+                "sequence_source_id must be inside source vocabulary: "
+                f"got sequence_source_id={self.sequence_source_id}, "
+                f"source_vocab_size={self.source_vocab_size}"
+            )
+        for name in (
             "num_user_buckets",
             "categorical_pair_buckets",
         ):

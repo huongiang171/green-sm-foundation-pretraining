@@ -18,10 +18,25 @@ def test_config_rejects_unknown_default_attention_mode() -> None:
         FoundationModelConfig(default_attention_mode="causal")
 
 
+def test_config_rejects_zero_attention_heads(model_config) -> None:
+    with pytest.raises(ValueError, match="num_heads"):
+        model_config(num_heads=0)
+
+
+def test_config_rejects_sequence_source_outside_source_vocab(model_config) -> None:
+    with pytest.raises(ValueError, match="sequence_source_id"):
+        model_config(source_vocab_size=2, sequence_source_id=2)
+
+
+def test_config_requires_real_input_cardinalities() -> None:
+    with pytest.raises(ValueError, match="value_vocab_size"):
+        FoundationModelConfig()
+
+
 def test_next_action_blocks_future_events_but_allows_profile_context(batch_factory) -> None:
     batch = batch_factory()
 
-    blocked = build_attention_mask(batch, "next_action", sequence_source_id=2)
+    blocked = build_attention_mask(batch, "next_action", sequence_source_id=1)
 
     assert blocked[0, 3, 4].item() is True
     assert blocked[0, 3, 1].item() is False
@@ -31,7 +46,7 @@ def test_next_action_blocks_future_events_but_allows_profile_context(batch_facto
 def test_bidirectional_does_not_add_causal_blocks(batch_factory) -> None:
     batch = batch_factory()
 
-    blocked = build_attention_mask(batch, "bidirectional", sequence_source_id=2)
+    blocked = build_attention_mask(batch, "bidirectional", sequence_source_id=1)
 
     assert blocked[0, 3, 4].item() is False
 
@@ -132,7 +147,7 @@ def test_foundation_input_smoke_uses_public_collator(model_config) -> None:
             value_id=7,
             key_id=3,
             modality_id=1,
-            source_id=1,
+            source_id=2,
             position_id=0,
             time_gap_id=0,
         ),
@@ -143,7 +158,7 @@ def test_foundation_input_smoke_uses_public_collator(model_config) -> None:
             value_id=9,
             key_id=4,
             modality_id=1,
-            source_id=2,
+            source_id=1,
             position_id=1,
             time_gap_id=0,
         ),

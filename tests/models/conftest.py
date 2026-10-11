@@ -11,13 +11,13 @@ def _batch_factory(*, two_tabular_tokens: bool = False) -> FoundationBatch:
         input_ids = [[1, 11, 12, 2, 21, 22, 0], [1, 13, 14, 2, 0, 0, 0]]
         key_ids = [[0, 3, 4, 0, 5, 6, 0], [0, 3, 4, 0, 0, 0, 0]]
         modality_ids = [[0, 1, 1, 0, 1, 1, 0], [0, 1, 1, 0, 0, 0, 0]]
-        source_ids = [[0, 1, 1, 0, 2, 2, 0], [0, 1, 1, 0, 0, 0, 0]]
+        source_ids = [[0, 2, 2, 0, 1, 1, 0], [0, 2, 2, 0, 0, 0, 0]]
         attention_mask = [[True, True, True, True, True, True, False], [True, True, True, True, False, False, False]]
     else:
         input_ids = [[1, 11, 2, 21, 22, 0, 0], [1, 13, 2, 0, 0, 0, 0]]
         key_ids = [[0, 3, 0, 5, 6, 0, 0], [0, 3, 0, 0, 0, 0, 0]]
         modality_ids = [[0, 1, 0, 1, 1, 0, 0], [0, 1, 0, 0, 0, 0, 0]]
-        source_ids = [[0, 1, 0, 2, 2, 0, 0], [0, 1, 0, 0, 0, 0, 0]]
+        source_ids = [[0, 2, 0, 1, 1, 0, 0], [0, 2, 0, 0, 0, 0, 0]]
         attention_mask = [[True, True, True, True, True, False, False], [True, True, True, False, False, False, False]]
 
     return FoundationBatch(
@@ -48,7 +48,7 @@ def _model_config(**overrides):
         "time_gap_vocab_size": 8,
         "num_user_buckets": 17,
         "categorical_pair_buckets": 97,
-        "sequence_source_id": 2,
+        "sequence_source_id": 1,
     }
     values.update(overrides)
     return FoundationModelConfig(**values)
