@@ -3,6 +3,7 @@ from __future__ import annotations
 from dataclasses import replace
 
 import numpy as np
+import pytest
 
 from src.foundation_input.dataset import (
     DatasetConfig,
@@ -60,6 +61,19 @@ def _canonical_sample() -> CanonicalSample:
     raw = sample_mapping("omnibehavior_v2")
     raw["events"] = tuple(EventRecord(**event) for event in raw["events"])
     return CanonicalSample(**raw)
+
+
+def _artifacts_for(sample: CanonicalSample):
+    return fit_vocabulary(
+        semantic_tokens(sample, TokenizerConfig()),
+        VocabularyConfig(dataset_name=sample.dataset_name),
+    )
+
+
+def _too_large_group_sample() -> CanonicalSample:
+    base = _canonical_sample()
+    event = replace(base.events[0], action={"type": "click", "click_cnt": 1})
+    return replace(base, events=(event,))
 
 
 def test_collator_builds_layout_and_padding_without_changing_real_tokens() -> None:
@@ -175,7 +189,7 @@ def test_max_tokens_reserves_cls_and_sep() -> None:
             _record(21, source="sequence", group="e1", position=1),
         ),
     )
-    retained = _truncate_records(list(sample.records), DatasetConfig(max_tokens=4))
+    retained = _truncate_records(list(sample.records), DatasetConfig(max_tokens=4)).records
     assert [record.value_id for record in retained] == [11, 21]
 
 
@@ -258,7 +272,7 @@ def test_truncation_keeps_recent_groups_and_an_event_token() -> None:
         _record(23, source="sequence", group="recent", position=3),
     ]
 
-    retained = _truncate_records(records, DatasetConfig(max_event_count=2, max_tokens=6))
+    retained = _truncate_records(records, DatasetConfig(max_event_count=2, max_tokens=6)).records
     retained_groups = [
         record.token.event_group_id
         for record in retained
@@ -275,4 +289,25 @@ def test_truncation_keeps_recent_groups_and_an_event_token() -> None:
         ],
         DatasetConfig(max_tokens=4),
     )
-    assert any(record.token.source == "sequence" for record in crowded)
+    assert any(record.token.source == "sequence" for record in crowded.records)
+
+
+def test_encode_sample_rejects_group_that_cannot_fit_without_splitting() -> None:
+    sample = _too_large_group_sample()
+
+    with pytest.raises(ValueError, match=rf"sample_id={sample.sample_id}.*complete event group"):
+        encode_sample(sample, _artifacts_for(sample), TokenizerConfig(), DatasetConfig(max_tokens=4))
+
+
+def test_truncation_does_not_return_a_group_prefix() -> None:
+    records = [
+        _record(11, source="tabular", group=None, position=0),
+        _record(21, source="sequence", group="recent", position=1),
+        _record(22, source="sequence", group="recent", position=1),
+        _record(23, source="sequence", group="recent", position=1),
+    ]
+
+    retained = _truncate_records(records, DatasetConfig(max_tokens=4))
+
+    assert retained.rejected_recent_group
+    assert all(record.token.source != "sequence" for record in retained.records)
