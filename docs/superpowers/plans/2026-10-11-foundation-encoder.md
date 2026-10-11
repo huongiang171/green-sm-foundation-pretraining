@@ -26,6 +26,8 @@
 
 The repository's actual `FoundationBatch` currently has only ID tensors (`input_ids`, `key_ids`, `modality_ids`, `source_ids`, `position_ids`, `time_gap_ids`), a validity mask, user IDs, and target metadata. It does **not** contain raw normalized numeric floats, numeric missing flags, or latitude/longitude tensors. `tokenizer.py` currently emits `categorical`, `numeric`, `text`, and `missing`; it does not emit `geo`.
 
+`sequence_source_id` is not a universal constant: Member 3 must take it from the selected artifact's `source_to_id["sequence"]` mapping, alongside returned cardinalities.
+
 Tasks 1–6 in this plan can be implemented against fixture batches immediately. Member 3 must not train a production foundation checkpoint until Member 1 has merged the following mandatory v1 repairs:
 
 1. **Stable OOV user identity.** In `encode_sample`, set `user_id_value_id=None` when the `user_id` token is `UNK=4`; this makes the existing collator invoke `_stable_user_id(dataset_name, user_id)`. Retain a train-vocabulary ID only when it is not a special ID. Add a test with two validation users outside the train vocabulary and assert their `batch.user_ids` differ and are deterministic.
@@ -100,7 +102,7 @@ def test_config_rejects_unknown_default_attention_mode() -> None:
         FoundationModelConfig(default_attention_mode="causal")
 ```
 
-Create `batch_factory()` in `conftest.py`. It must return a real CPU `FoundationBatch` of shape `[2, 7]` with layout `[CLS, tabular, SEP, event-1, event-2, PAD, PAD]` for row zero and a zero-event row one. Use source ID `2` for sequence and `1` for tabular. Make every tensor explicit and use `torch.long` for IDs and `torch.bool` for the attention mask. Also create `model_config(**overrides)` returning `FoundationModelConfig(d_model=16, num_heads=4, num_layers=2, dropout=0.0, value_vocab_size=64, key_vocab_size=32, modality_vocab_size=8, source_vocab_size=4, time_gap_vocab_size=8, num_user_buckets=17, categorical_pair_buckets=97, sequence_source_id=2, **overrides)` so every test has valid ID-table capacity.
+Create `batch_factory()` in `conftest.py`. It must return a real CPU `FoundationBatch` of shape `[2, 7]` with layout `[CLS, tabular, SEP, event-1, event-2, PAD, PAD]` for row zero and a zero-event row one. With the current sorted fixture vocabulary, use source ID `1` for sequence and `2` for tabular. Make every tensor explicit and use `torch.long` for IDs and `torch.bool` for the attention mask. Also create `model_config(**overrides)` returning `FoundationModelConfig(d_model=16, num_heads=4, num_layers=2, dropout=0.0, value_vocab_size=64, key_vocab_size=32, modality_vocab_size=8, source_vocab_size=4, time_gap_vocab_size=8, num_user_buckets=17, categorical_pair_buckets=97, sequence_source_id=1, **overrides)` so every test has valid ID-table capacity.
 
 - [ ] **Step 2: Run the test to verify it fails**
 
@@ -135,7 +137,7 @@ class FoundationModelConfig:
     time_gap_vocab_size: int = 8
     num_user_buckets: int = 50_000
     categorical_pair_buckets: int = 100_003
-    sequence_source_id: int = 2
+    sequence_source_id: int = 1
     default_attention_mode: str = "bidirectional"
 
     def __post_init__(self) -> None:
@@ -320,16 +322,16 @@ from src.models.pooling import SequencePooler
 def test_pooler_excludes_tabular_and_padding_tokens() -> None:
     hidden = torch.tensor([[[100.0, 100.0], [2.0, 2.0], [4.0, 4.0], [999.0, 999.0]]])
     valid = torch.tensor([[True, True, True, False]])
-    source = torch.tensor([[0, 2, 2, 2]])
-    result = SequencePooler(sequence_source_id=2)(hidden, valid, source)
+    source = torch.tensor([[0, 1, 1, 1]])
+    result = SequencePooler(sequence_source_id=1)(hidden, valid, source)
     assert torch.equal(result, torch.tensor([[3.0, 3.0]]))
 
 
 def test_pooler_uses_cls_when_user_has_no_event() -> None:
     hidden = torch.tensor([[[7.0, 8.0], [2.0, 2.0]]])
     valid = torch.tensor([[True, True]])
-    source = torch.tensor([[0, 1]])
-    result = SequencePooler(sequence_source_id=2)(hidden, valid, source)
+    source = torch.tensor([[0, 2]])
+    result = SequencePooler(sequence_source_id=1)(hidden, valid, source)
     assert torch.equal(result, torch.tensor([[7.0, 8.0]]))
 ```
 
@@ -645,7 +647,7 @@ def test_future_event_cannot_change_past_event_hidden_state(batch_factory) -> No
     torch.testing.assert_close(before, after, rtol=0.0, atol=1e-6)
 ```
 
-`batch_factory(two_tabular_tokens=True)` must place the second tabular token before SEP and preserve the same `position_id=0`, `time_gap_id=0`, `source_id=1` for both profile tokens.
+`batch_factory(two_tabular_tokens=True)` must place the second tabular token before SEP and preserve the same `position_id=0`, `time_gap_id=0`, `source_id=2` for both profile tokens.
 
 - [ ] **Step 2: Run tests to verify their initial behavior**
 
@@ -702,11 +704,11 @@ from src.foundation_input.types import EncodedSample, KeyValueToken, TokenRecord
 records = (
     TokenRecord(
         token=KeyValueToken("profile.city", "Hanoi", "categorical", "tabular", None),
-        value_id=7, key_id=3, modality_id=1, source_id=1, position_id=0, time_gap_id=0,
+        value_id=7, key_id=3, modality_id=1, source_id=2, position_id=0, time_gap_id=0,
     ),
     TokenRecord(
         token=KeyValueToken("event.event_type", "view", "categorical", "sequence", None, "e-1"),
-        value_id=9, key_id=4, modality_id=1, source_id=2, position_id=1, time_gap_id=0,
+        value_id=9, key_id=4, modality_id=1, source_id=1, position_id=1, time_gap_id=0,
     ),
 )
 batch = foundation_collate([

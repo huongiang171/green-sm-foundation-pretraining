@@ -66,7 +66,13 @@ class GeoAdapter(nn.Module):
 
 
 class AdapterRegistry(nn.Module):
-    """Converts the ID-only FoundationBatch v1 contract into token vectors."""
+    """Converts the ID-only FoundationBatch v1 contract into token vectors.
+
+    Consumes FoundationBatch v1 ID/bucket features for categorical, numeric, text, and
+    missing values. It does not receive raw numeric floats or geo tensors; continuous numeric
+    MLP and geo routing require the separately versioned FoundationBatch extension owned by
+    the input/data teams.
+    """
 
     def __init__(self, config: FoundationModelConfig) -> None:
         super().__init__()
