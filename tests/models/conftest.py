@@ -1,11 +1,12 @@
 from __future__ import annotations
 
+import pytest
 import torch
 
 from src.foundation_input.types import FoundationBatch
 
 
-def batch_factory(*, two_tabular_tokens: bool = False) -> FoundationBatch:
+def _batch_factory(*, two_tabular_tokens: bool = False) -> FoundationBatch:
     if two_tabular_tokens:
         input_ids = [[1, 11, 12, 2, 21, 22, 0], [1, 13, 14, 2, 0, 0, 0]]
         key_ids = [[0, 3, 4, 0, 5, 6, 0], [0, 3, 4, 0, 0, 0, 0]]
@@ -32,7 +33,7 @@ def batch_factory(*, two_tabular_tokens: bool = False) -> FoundationBatch:
     )
 
 
-def model_config(**overrides):
+def _model_config(**overrides):
     from src.models.encoder import FoundationModelConfig
 
     values = {
@@ -51,3 +52,13 @@ def model_config(**overrides):
     }
     values.update(overrides)
     return FoundationModelConfig(**values)
+
+
+@pytest.fixture
+def batch_factory():
+    return _batch_factory
+
+
+@pytest.fixture
+def model_config():
+    return _model_config
