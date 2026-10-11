@@ -1,4 +1,4 @@
-"""Modality-aware ID adapters consumed by the foundation Transformer."""
+"""Modality-aware adapters consumed by the foundation Transformer."""
 
 from __future__ import annotations
 
@@ -66,12 +66,12 @@ class GeoAdapter(nn.Module):
 
 
 class AdapterRegistry(nn.Module):
-    """Converts the ID-only FoundationBatch v1 contract into token vectors.
+    """Converts the FoundationBatch v2 contract into token vectors.
 
-    Consumes FoundationBatch v1 ID/bucket features for categorical, numeric, text, and
-    missing values. It does not receive raw numeric floats or geo tensors; continuous numeric
-    MLP and geo routing require the separately versioned FoundationBatch extension owned by
-    the input/data teams.
+    Categorical, text, and missing tokens use bounded ID/pair embeddings. Numeric tokens keep
+    their key, modality, and source context but replace value/pair lookup with an MLP over the
+    normalized raw value and its missing flag. Geo tensors remain unsupported until a versioned
+    geo field is added to ``FoundationBatch``.
     """
 
     def __init__(self, config: FoundationModelConfig) -> None:
@@ -93,6 +93,11 @@ class AdapterRegistry(nn.Module):
         self.position_embedding = nn.Embedding(config.max_length, config.d_model, padding_idx=0)
         self.time_gap_embedding = nn.Embedding(
             config.time_gap_vocab_size, config.d_model, padding_idx=0
+        )
+        self.numeric_mlp = nn.Sequential(
+            nn.Linear(2, config.d_model),
+            nn.GELU(),
+            nn.Linear(config.d_model, config.d_model),
         )
         self.modality_projections = nn.ModuleList(
             nn.Linear(config.d_model, config.d_model, bias=False)
@@ -118,6 +123,25 @@ class AdapterRegistry(nn.Module):
             raise ValueError(f"{name} contains an ID outside [0, {size - 1}]")
         return values
 
+    def _numeric_tensors(self, batch: FoundationBatch) -> tuple[torch.Tensor, torch.BoolTensor]:
+        expected_shape = self._batch_shape(batch)
+        values = batch.numeric_values
+        missing_mask = batch.numeric_missing_mask
+        if values.shape != expected_shape or values.dtype != torch.float32:
+            raise ValueError(
+                "numeric_values must be torch.float32 with shape "
+                f"{expected_shape}, got shape={tuple(values.shape)}, dtype={values.dtype}"
+            )
+        if missing_mask.shape != expected_shape or missing_mask.dtype != torch.bool:
+            raise ValueError(
+                "numeric_missing_mask must be torch.bool with shape "
+                f"{expected_shape}, got shape={tuple(missing_mask.shape)}, "
+                f"dtype={missing_mask.dtype}"
+            )
+        if not torch.isfinite(values).all():
+            raise ValueError("numeric_values must be finite")
+        return values, missing_mask
+
     def _project_by_modality(
         self, features: torch.Tensor, modality_ids: torch.LongTensor
     ) -> torch.Tensor:
@@ -142,17 +166,25 @@ class AdapterRegistry(nn.Module):
         source_ids = self._ids(batch, "source_ids", self.config.source_vocab_size)
         position_ids = self._ids(batch, "position_ids", self.config.max_length)
         time_gap_ids = self._ids(batch, "time_gap_ids", self.config.time_gap_vocab_size)
+        numeric_values, numeric_missing_mask = self._numeric_tensors(batch)
 
         pair_ids = torch.remainder(
             key_ids * 1_000_003 + input_ids, self.config.categorical_pair_buckets
         )
-        features = (
+        id_features = (
             self.value_embedding(input_ids)
             + self.pair_embedding(pair_ids)
-            + self.key_embedding(key_ids)
+        )
+        shared_features = (
+            self.key_embedding(key_ids)
             + self.modality_embedding(modality_ids)
             + self.source_embedding(source_ids)
         )
+        numeric_features = self.numeric_mlp(
+            torch.stack((numeric_values, numeric_missing_mask.to(torch.float32)), dim=-1)
+        )
+        is_numeric = modality_ids.eq(self.config.numeric_modality_id).unsqueeze(-1)
+        features = shared_features + torch.where(is_numeric, numeric_features, id_features)
 
         sequence_mask = batch.attention_mask & source_ids.eq(self.config.sequence_source_id)
         features = self._project_by_modality(features, modality_ids)

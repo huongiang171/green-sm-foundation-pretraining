@@ -5,6 +5,7 @@ import torch
 
 from src.foundation_input.dataset import foundation_collate
 from src.foundation_input.types import EncodedSample, KeyValueToken, TokenRecord
+from src.foundation_input.vocab import VocabularyConfig, fit_vocabulary
 from src.models.encoder import FoundationModel, FoundationModelConfig, build_attention_mask
 
 
@@ -26,6 +27,13 @@ def test_config_rejects_zero_attention_heads(model_config) -> None:
 def test_config_rejects_sequence_source_outside_source_vocab(model_config) -> None:
     with pytest.raises(ValueError, match="sequence_source_id"):
         model_config(source_vocab_size=2, sequence_source_id=2)
+
+
+def test_config_rejects_numeric_modality_outside_modality_vocab(model_config) -> None:
+    with pytest.raises(ValueError, match="numeric_modality_id"):
+        model_config(modality_vocab_size=3, numeric_modality_id=3)
+    with pytest.raises(ValueError, match="numeric_modality_id"):
+        model_config(numeric_modality_id=0)
 
 
 def test_config_requires_real_input_cardinalities() -> None:
@@ -178,3 +186,54 @@ def test_foundation_input_smoke_uses_public_collator(model_config) -> None:
     assert output.long_term.shape == output.short_term.shape == (2, config.d_model)
     assert torch.isfinite(output.long_term).all()
     assert torch.isfinite(output.short_term).all()
+
+
+def test_artifact_metadata_builds_numeric_model_and_handles_zero_and_missing() -> None:
+    numeric = KeyValueToken("profile.score", 0.0, "numeric", "tabular", None)
+    numeric_for_fit = KeyValueToken("profile.score", 10.0, "numeric", "tabular", None)
+    sequence = KeyValueToken("event.type", "view", "categorical", "sequence", None, "event-1")
+    artifacts = fit_vocabulary(
+        [numeric, numeric_for_fit, sequence], VocabularyConfig(dataset_name="fixture")
+    )
+    cardinalities = artifacts.model_cardinalities()
+
+    def numeric_record(value: float | None) -> TokenRecord:
+        token = KeyValueToken("profile.score", value, "numeric", "tabular", None)
+        normalized, missing = artifacts.normalize_numeric(token)
+        return TokenRecord(
+            token=token,
+            value_id=artifacts.encode_value(token),
+            key_id=artifacts.encode_key(token),
+            modality_id=artifacts.encode_modality(token),
+            source_id=artifacts.encode_source(token),
+            position_id=0,
+            time_gap_id=0,
+            numeric_value=normalized,
+            numeric_missing=missing,
+        )
+
+    batch = foundation_collate(
+        [
+            EncodedSample("observed", "fixture", "user-1", (numeric_record(0.0),)),
+            EncodedSample("missing", "fixture", "user-2", (numeric_record(None),)),
+        ]
+    )
+    config = FoundationModelConfig(
+        d_model=8,
+        num_heads=2,
+        num_layers=1,
+        dropout=0.0,
+        max_length=16,
+        **{key: cardinalities[key] for key in cardinalities if key.endswith("_vocab_size")},
+        num_user_buckets=17,
+        categorical_pair_buckets=97,
+        sequence_source_id=artifacts.source_to_id["sequence"],
+        numeric_modality_id=artifacts.modality_to_id["numeric"],
+    )
+
+    output = FoundationModel(config).eval().encode(batch)
+
+    assert batch.numeric_values.shape == batch.input_ids.shape
+    assert batch.numeric_missing_mask.shape == batch.input_ids.shape
+    assert output.hidden_states.shape == (2, batch.input_ids.shape[1], config.d_model)
+    assert torch.isfinite(output.hidden_states[output.padding_mask]).all()

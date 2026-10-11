@@ -30,6 +30,7 @@ class FoundationModelConfig:
     num_user_buckets: int = 50_000
     categorical_pair_buckets: int = 100_003
     sequence_source_id: int | None = None
+    numeric_modality_id: int | None = None
     default_attention_mode: str = "bidirectional"
 
     def __post_init__(self) -> None:
@@ -46,18 +47,21 @@ class FoundationModelConfig:
             raise ValueError("dropout must be in [0.0, 1.0)")
         if self.default_attention_mode not in {"bidirectional", "next_action"}:
             raise ValueError("default_attention_mode must be bidirectional or next_action")
-        metadata = (
+        vocabulary_metadata = (
             "value_vocab_size",
             "key_vocab_size",
             "modality_vocab_size",
             "source_vocab_size",
             "time_gap_vocab_size",
-            "sequence_source_id",
         )
-        for name in metadata:
+        routing_metadata = (
+            "sequence_source_id",
+            "numeric_modality_id",
+        )
+        for name in vocabulary_metadata + routing_metadata:
             if getattr(self, name) is None:
                 raise ValueError(f"{name} must be supplied from vocabulary metadata")
-        for name in metadata[:-1]:
+        for name in vocabulary_metadata:
             if getattr(self, name) <= 0:
                 raise ValueError(f"{name} must be positive")
         if not 0 <= self.sequence_source_id < self.source_vocab_size:
@@ -65,6 +69,12 @@ class FoundationModelConfig:
                 "sequence_source_id must be inside source vocabulary: "
                 f"got sequence_source_id={self.sequence_source_id}, "
                 f"source_vocab_size={self.source_vocab_size}"
+            )
+        if not 0 < self.numeric_modality_id < self.modality_vocab_size:
+            raise ValueError(
+                "numeric_modality_id must be inside modality vocabulary: "
+                f"got numeric_modality_id={self.numeric_modality_id}, "
+                f"modality_vocab_size={self.modality_vocab_size}"
             )
         for name in (
             "num_user_buckets",

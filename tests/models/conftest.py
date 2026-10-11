@@ -51,6 +51,7 @@ def _model_config(**overrides):
         "num_user_buckets": 17,
         "categorical_pair_buckets": 97,
         "sequence_source_id": 1,
+        "numeric_modality_id": 3,
     }
     values.update(overrides)
     return FoundationModelConfig(**values)
