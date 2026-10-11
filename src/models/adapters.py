@@ -112,6 +112,15 @@ class AdapterRegistry(nn.Module):
             raise ValueError(f"{name} contains an ID outside [0, {size - 1}]")
         return values
 
+    def _project_by_modality(
+        self, features: torch.Tensor, modality_ids: torch.LongTensor
+    ) -> torch.Tensor:
+        projected = torch.zeros_like(features)
+        for modality_id, projection in enumerate(self.modality_projections):
+            selected = modality_ids.eq(modality_id).unsqueeze(-1)
+            projected = torch.where(selected, projection(features), projected)
+        return projected
+
     def forward(self, batch: FoundationBatch) -> torch.Tensor:
         batch_shape = self._batch_shape(batch)
         if batch.attention_mask.shape != batch_shape or batch.attention_mask.dtype != torch.bool:
@@ -139,13 +148,8 @@ class AdapterRegistry(nn.Module):
             + self.source_embedding(source_ids)
         )
 
-        projected = torch.zeros_like(features)
-        for modality_id, projection in enumerate(self.modality_projections):
-            modality_mask = modality_ids.eq(modality_id).unsqueeze(-1)
-            projected = torch.where(modality_mask, projection(features), projected)
-
         sequence_mask = batch.attention_mask & source_ids.eq(self.config.sequence_source_id)
-        features = projected
+        features = self._project_by_modality(features, modality_ids)
         features = features + self.position_embedding(position_ids) * sequence_mask.unsqueeze(-1)
         features = features + self.time_gap_embedding(time_gap_ids) * sequence_mask.unsqueeze(-1)
         return features.masked_fill(~batch.attention_mask.unsqueeze(-1), 0.0)
