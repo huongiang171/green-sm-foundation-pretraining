@@ -8,7 +8,6 @@ from dataclasses import dataclass
 from typing import Any
 
 from .loader import iter_normalized_samples
-from .manifest import load_manifest
 from .tokenizer import TokenizerConfig, tokenize_sample
 from .types import SPECIAL_TOKEN_IDS, EncodedSample, FoundationBatch, TokenRecord
 from .vocab import VocabularyArtifacts
@@ -128,12 +127,23 @@ class FoundationPretrainDataset:
         self.split = split
         self.artifacts = artifacts
         if tokenizer_config is None:
-            manifest = load_manifest(dataset_root, validate_shard_files=False)
-            allowlist = {
-                key: tuple(value)
-                for key, value in manifest.config.get("context_allowlist", {}).items()
-            }
-            tokenizer_config = TokenizerConfig(context_allowlist=allowlist)
+            contract = artifacts.tokenizer_contract
+            if not contract:
+                raise ValueError("Vocabulary artifact lacks tokenizer contract")
+            tokenizer_config = TokenizerConfig(
+                context_allowlist={
+                    str(key): tuple(value)
+                    for key, value in contract["context_allowlist"].items()
+                },
+                max_text_chars=int(contract["max_text_chars"]),
+                include_action_content=bool(contract["include_action_content"]),
+                numeric_fields=frozenset(
+                    (str(source), str(key)) for source, key in contract["numeric_fields"]
+                ),
+                time_gap_boundaries_seconds=tuple(
+                    float(value) for value in contract["time_gap_boundaries_seconds"]
+                ),
+            )
         self.tokenizer_config = tokenizer_config
         self.dataset_config = dataset_config or DatasetConfig()
     def __iter__(self) -> Iterator[EncodedSample]:

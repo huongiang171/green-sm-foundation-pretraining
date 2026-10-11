@@ -41,7 +41,9 @@ Vocabulary, numeric boundaries, and normalization metadata are fit only from the
 fields aligned with `input_ids`. Missing/non-finite numeric values use
 `numeric_values=0.0` and `numeric_missing_mask=True`; padding and non-numeric
 tokens use `0.0` and `False`. The normalization policy is per numeric field and
-must be serialized with the vocabulary.
+must be serialized with the vocabulary. The vocabulary also serializes the tokenizer
+contract (allowlist, text limit, action-content policy, numeric registry, and time-gap
+boundaries); transform-time tokenization must use that exact contract.
 
 `order_price_interval` and other source buckets remain categorical values. They are never converted into exact monetary values.
 
