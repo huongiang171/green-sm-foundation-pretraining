@@ -21,7 +21,13 @@ class DatasetConfig:
     next_action_prediction: bool = False
 
 
-def _truncate_records(records: list[TokenRecord], config: DatasetConfig) -> tuple[TokenRecord, ...]:
+@dataclass(frozen=True)
+class TruncationResult:
+    records: tuple[TokenRecord, ...]
+    rejected_recent_group: bool
+
+
+def _truncate_records(records: list[TokenRecord], config: DatasetConfig) -> TruncationResult:
     tabular = [record for record in records if record.token.source == "tabular"]
     sequence = [record for record in records if record.token.source == "sequence"]
     groups: list[list[TokenRecord]] = []
@@ -29,11 +35,11 @@ def _truncate_records(records: list[TokenRecord], config: DatasetConfig) -> tupl
         if not groups or groups[-1][0].token.event_group_id != record.token.event_group_id:
             groups.append([])
         groups[-1].append(record)
+    kept_groups = groups[-config.max_event_count :] if config.max_event_count > 0 else []
     record_budget = max(0, config.max_tokens - 2)
     if record_budget == 0:
-        return ()
+        return TruncationResult((), rejected_recent_group=bool(kept_groups))
 
-    kept_groups = groups[-config.max_event_count :] if config.max_event_count > 0 else []
     reserved_tabular = 1 if tabular and kept_groups else 0
     remaining_event_budget = max(0, record_budget - reserved_tabular)
     selected_groups: list[list[TokenRecord]] = []
@@ -41,12 +47,11 @@ def _truncate_records(records: list[TokenRecord], config: DatasetConfig) -> tupl
         if len(group) <= remaining_event_budget:
             selected_groups.append(group)
             remaining_event_budget -= len(group)
-        elif not selected_groups and remaining_event_budget > 0:
-            # Keep at least one token from the most recent event when a full
-            # group cannot fit in the token budget.
-            selected_groups.append(group[:remaining_event_budget])
-            remaining_event_budget = 0
-            break
+        elif not selected_groups:
+            return TruncationResult(
+                records=tuple(tabular[:record_budget]),
+                rejected_recent_group=True,
+            )
         else:
             break
     selected_groups.reverse()
@@ -54,7 +59,7 @@ def _truncate_records(records: list[TokenRecord], config: DatasetConfig) -> tupl
     tabular_budget = record_budget - len(event_records)
     selected = tabular[:tabular_budget]
     selected.extend(event_records)
-    return tuple(selected)
+    return TruncationResult(tuple(selected), rejected_recent_group=False)
 
 
 def encode_sample(
@@ -67,7 +72,13 @@ def encode_sample(
     user_id_record = next(
         (record for record in records if record.token.key == "user_id"), None
     )
-    selected = _truncate_records(records, dataset_config)
+    truncation = _truncate_records(records, dataset_config)
+    if truncation.rejected_recent_group:
+        raise ValueError(
+            f"sample_id={sample.sample_id}: most recent complete event group "
+            "does not fit within max_tokens; refusing to split the group"
+        )
+    selected = truncation.records
     next_action_records: tuple[TokenRecord, ...] = ()
     if (
         dataset_config.next_action_prediction
