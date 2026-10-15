@@ -7,6 +7,7 @@ import pytest
 
 from src.data.green_sm.build import build_dataset
 from src.data.green_sm.config import GreenSmConfig
+from src.data.green_sm.world import build_target_world
 from src.foundation_input.loader import iter_normalized_samples
 
 
@@ -32,3 +33,16 @@ def test_build_refuses_to_overwrite_immutable_output_root(tmp_path: Path) -> Non
 
     with pytest.raises(ValueError, match="non-empty output root"):
         build_dataset(config)
+
+
+def test_pilot_snapshot_split_keeps_every_cold_user_out_of_train_and_in_test(tmp_path: Path) -> None:
+    config = _pilot_config(tmp_path)
+    result = build_dataset(config)
+    cold_users = build_target_world(config).cold_start_user_ids
+    root = next(iter(result["foundation_roots"].values()))
+
+    train_users = {sample.user_id for sample in iter_normalized_samples(root, "train")}
+    test_users = {sample.user_id for sample in iter_normalized_samples(root, "test")}
+
+    assert not cold_users & train_users
+    assert cold_users <= test_users
