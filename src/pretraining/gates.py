@@ -12,6 +12,7 @@ import torch
 
 from src.foundation_input.manifest import load_manifest
 from src.foundation_input.types import FoundationBatch
+from src.models.encoder import FoundationModelConfig
 
 from .config import PretrainingConfig, RoutingIds
 
@@ -75,6 +76,11 @@ def preflight_green_sm(config: PretrainingConfig) -> PreflightResult:
         raise RuntimeError(
             "Runtime FoundationBatch lacks geo_values and geo_missing_mask; "
             "merge the v3 input contract before pretraining"
+        )
+    if "geo_modality_id" not in FoundationModelConfig.__dataclass_fields__:
+        raise RuntimeError(
+            "Runtime FoundationModelConfig lacks geo_modality_id; "
+            "merge the v3 adapter routing contract before pretraining"
         )
     return PreflightResult(
         linked_manifest_sha256=linked_sha,
