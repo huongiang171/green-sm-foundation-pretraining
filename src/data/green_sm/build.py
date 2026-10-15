@@ -114,10 +114,22 @@ def _extra_specs(
             raise ValueError(f"{split} request count exceeds configured snapshot count")
         start_day, end_day = _split_start_day(split)
         days = end_day - start_day + 1
+        existing_users = {user_id for _, user_id, _ in specs[split]}
+        required_cold = (
+            [user for user in world.users if user.user_id in world.cold_start_user_ids and user.user_id not in existing_users]
+            if split == "test"
+            else []
+        )
+        if len(required_cold) > remaining:
+            raise ValueError("test snapshot budget cannot cover every cold-start user")
         for ordinal in range(remaining):
-            day = start_day + ordinal % days
-            eligible = [user for user in world.users if user.first_active_day <= day]
-            user = eligible[_rng(config.seed, "extra-snapshot", split, ordinal).randrange(len(eligible))]
+            if ordinal < len(required_cold):
+                user = required_cold[ordinal]
+                day = max(start_day + ordinal % days, user.first_active_day)
+            else:
+                day = start_day + ordinal % days
+                eligible = [user for user in world.users if user.first_active_day <= day]
+                user = eligible[_rng(config.seed, "extra-snapshot", split, ordinal).randrange(len(eligible))]
             # Seconds avoid accidental collision with request cutoffs while preserving
             # deterministic time order under the same daily volume at full scale.
             cutoff = SIMULATION_START + timedelta(days=day - 1, hours=12, seconds=ordinal // days)
