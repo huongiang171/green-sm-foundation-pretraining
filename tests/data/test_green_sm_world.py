@@ -35,6 +35,12 @@ def test_target_world_has_exact_requests_public_candidates_and_valid_label_rates
     assert all(len(request.candidates) == 20 for request in world.food_requests)
     assert all(len({candidate.candidate_id for candidate in request.candidates}) == 20 for request in world.food_requests)
     assert all(sum(candidate.is_hard_negative for candidate in request.candidates) >= 10 for request in world.food_requests)
+    assert all(
+        candidate.category == request.candidates[0].category
+        for request in world.food_requests
+        for candidate in request.candidates
+        if candidate.is_hard_negative
+    )
     assert all(len(request.candidates) == 10 for request in world.ads_requests)
     assert all(len({candidate.candidate_id for candidate in request.candidates}) == 10 for request in world.ads_requests)
     assert 0.05 <= world.food_positive_rate() <= 0.20

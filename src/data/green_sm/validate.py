@@ -102,16 +102,21 @@ def _token_and_oov_metrics(
     }
 
     def inspect(split: str, key: str, value: object) -> None:
+        count_for_threshold = split == "train"
         if key.endswith("_location"):
-            counts["geo"] += 1
+            if count_for_threshold:
+                counts["geo"] += 1
             return
         if isinstance(value, bool):
-            counts["categorical"] += 1
+            if count_for_threshold:
+                counts["categorical"] += 1
         elif isinstance(value, int | float):
-            counts["numeric"] += 1
+            if count_for_threshold:
+                counts["numeric"] += 1
         elif isinstance(value, str):
             modality = "text" if key == "query" else "categorical"
-            counts[modality] += 1
+            if count_for_threshold:
+                counts[modality] += 1
             if key in closed_keys and modality == "categorical":
                 if split == "train":
                     train_values[key].add(value)
@@ -128,7 +133,8 @@ def _token_and_oov_metrics(
                     geo_total += 1
                     geo_valid += int(_geo_valid(value))
             for event in sample.events:
-                counts["categorical"] += 2  # scenario and event type
+                if split == "train":
+                    counts["categorical"] += 2  # scenario and event type
                 for payload in (event.context, event.action):
                     for key, value in _walk_values(payload):
                         inspect(split, key, value)

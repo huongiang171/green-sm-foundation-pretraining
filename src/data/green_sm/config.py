@@ -246,6 +246,20 @@ class GreenSmConfig:
             "ads_request_counts": dict(self.ads_request_counts),
             "max_history_events": self.max_history_events,
             "max_tokens": self.max_tokens,
+            "thresholds": {
+                "min_train_event_rows_per_event_type": self.thresholds.min_train_event_rows_per_event_type,
+                "max_train_event_type_share": self.thresholds.max_train_event_type_share,
+                "min_train_valid_next_action_rate": self.thresholds.min_train_valid_next_action_rate,
+                "min_train_maskable_tokens": dict(self.thresholds.min_train_maskable_tokens),
+                "min_valid_geo_rate": self.thresholds.min_valid_geo_rate,
+                "max_non_user_oov_rate_validation_test": self.thresholds.max_non_user_oov_rate_validation_test,
+                "cold_start_test_user_rate": self.thresholds.cold_start_test_user_rate,
+                "min_food_hard_negatives_per_request": self.thresholds.min_food_hard_negatives_per_request,
+                "food_positive_rate_range": self.thresholds.food_positive_rate_range,
+                "ads_click_rate_range": self.thresholds.ads_click_rate_range,
+                "min_ads_ranking_eligible_rate": self.thresholds.min_ads_ranking_eligible_rate,
+                "max_control_auc_lift": self.thresholds.max_control_auc_lift,
+            },
         }
         encoded = json.dumps(canonical, sort_keys=True, separators=(",", ":")).encode("utf-8")
         return hashlib.sha256(encoded).hexdigest()
