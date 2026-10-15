@@ -100,3 +100,24 @@ def test_train_one_step_rejects_current_v2_collation(monkeypatch) -> None:
 
     with pytest.raises(RuntimeError, match="geo_values"):
         runner.train_one_step(state, [object()], global_step=0)
+
+
+def test_train_one_step_uses_state_masking_probability(monkeypatch) -> None:
+    """Hard-coding 0.15 must not mask fields when a run explicitly configures zero masking."""
+    from src.pretraining import runner
+
+    state = runner.make_training_state(
+        d_model=8, num_heads=2, num_layers=1, dropout=0.0, max_length=8,
+        value_vocab_size=32, key_vocab_size=8, modality_vocab_size=5, source_vocab_size=4,
+        time_gap_vocab_size=4, num_user_buckets=17, categorical_pair_buckets=31,
+        routing=RoutingIds(sequence=1, numeric=2, geo=3), learning_rate=0.001,
+        weight_decay=0.0, objective_weights=ObjectiveWeights(1, 1, 1, 1, 1, 1),
+        masking_probability=0.0,
+    )
+    monkeypatch.setattr(runner, "foundation_collate", lambda _: _batch())
+
+    losses = runner.train_one_step(state, [object()], global_step=0)
+
+    assert losses.counts["categorical"] == 0
+    assert losses.counts["numeric_value"] == 0
+    assert losses.counts["geo_coordinate"] == 0

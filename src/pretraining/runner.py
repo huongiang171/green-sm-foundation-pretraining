@@ -41,6 +41,7 @@ class TrainingState:
     optimizer: torch.optim.Optimizer
     routing: RoutingIds
     objective_weights: ObjectiveWeights
+    masking_probability: float
     device: torch.device
 
     @property
@@ -127,6 +128,7 @@ def make_training_state(
     learning_rate: float,
     weight_decay: float,
     objective_weights: ObjectiveWeights,
+    masking_probability: float = 0.15,
     device: str | torch.device = "cpu",
 ) -> TrainingState:
     """Construct all trainable modules from persisted vocabulary metadata."""
@@ -152,7 +154,11 @@ def make_training_state(
         lr=learning_rate,
         weight_decay=weight_decay,
     )
-    return TrainingState(model, fusion, heads, optimizer, routing, objective_weights, resolved_device)
+    if not 0.0 <= masking_probability <= 1.0:
+        raise ValueError("masking_probability must be in [0, 1]")
+    return TrainingState(
+        model, fusion, heads, optimizer, routing, objective_weights, masking_probability, resolved_device
+    )
 
 
 def _to_device(batch, device: torch.device):
@@ -185,7 +191,7 @@ def train_one_step(state: TrainingState, samples: list, *, global_step: int) -> 
     corrupted = corrupt_for_masked_reconstruction(
         batch,
         routing=state.routing,
-        probability=0.15,
+        probability=state.masking_probability,
         seed=global_step,
         global_step=global_step,
     )
@@ -231,7 +237,11 @@ def evaluate_split(state: TrainingState, samples: Iterable, *, max_batches: int 
         batch = _to_device(foundation_collate(sample_batch), state.device)
         validate_v3_batch_contract(batch, state.routing)
         corrupted = corrupt_for_masked_reconstruction(
-            batch, routing=state.routing, probability=0.15, seed=0, global_step=index
+            batch,
+            routing=state.routing,
+            probability=state.masking_probability,
+            seed=0,
+            global_step=index,
         )
         loss = compute_pretraining_loss(
             masked_output=state.model(corrupted.batch, attention_mode="bidirectional"),
@@ -294,6 +304,7 @@ def run_corpus(
         learning_rate=config.training.learning_rate,
         weight_decay=config.training.weight_decay,
         objective_weights=config.objectives,
+        masking_probability=config.masking_probability,
         device=device,
     )
     requested_steps = max_steps if max_steps is not None else config.training.max_steps
