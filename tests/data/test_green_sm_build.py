@@ -1,7 +1,10 @@
 from __future__ import annotations
 
 from dataclasses import replace
+import json
 from pathlib import Path
+import subprocess
+import sys
 
 import pytest
 
@@ -46,3 +49,21 @@ def test_pilot_snapshot_split_keeps_every_cold_user_out_of_train_and_in_test(tmp
 
     assert not cold_users & train_users
     assert cold_users <= test_users
+
+
+def test_pilot_cli_builds_and_writes_readiness_report(tmp_path: Path) -> None:
+    config_payload = json.loads(Path("configs/green_sm_sim_pilot.json").read_text(encoding="utf-8"))
+    config_payload["output_root"] = str(tmp_path / "out")
+    config_path = tmp_path / "pilot.json"
+    config_path.write_text(json.dumps(config_payload), encoding="utf-8")
+
+    completed = subprocess.run(
+        [sys.executable, "-m", "src.data.green_sm", "--config", str(config_path)],
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+
+    assert completed.returncode == 0, completed.stderr
+    report = tmp_path / "out" / "green_sm_sim_linked_v1" / "reports" / "data_quality_report.json"
+    assert json.loads(report.read_text(encoding="utf-8"))["readiness_passed"] is True
