@@ -4,6 +4,7 @@ import hashlib
 import json
 from dataclasses import replace
 from pathlib import Path
+from types import SimpleNamespace
 
 import pyarrow as pa
 import pyarrow.parquet as pq
@@ -11,7 +12,7 @@ import pytest
 
 from src.data.green_sm.build import build_dataset
 from src.data.green_sm.config import GreenSmConfig
-from src.data.green_sm.validate import validate_outputs
+from src.data.green_sm.validate import _token_and_oov_metrics, validate_outputs
 
 
 def _sha256(path: Path) -> str:
@@ -60,3 +61,23 @@ def test_validator_writes_complete_report_and_rejects_control_label_marker(tmp_p
     _inject_control_only_label_marker(config)
     with pytest.raises(ValueError, match="paired-control conditional independence"):
         validate_outputs(config)
+
+
+def test_token_threshold_counts_are_train_only() -> None:
+    heldout_sample = SimpleNamespace(
+        profile={"budget_bucket": "medium"},
+        events=(
+            SimpleNamespace(
+                scenario="Food",
+                event_type="food_search",
+                context={"food_category": "noodles"},
+                action={"item_price": 50000},
+            ),
+        ),
+    )
+
+    counts, _, _ = _token_and_oov_metrics(
+        {"train": [], "validation": [heldout_sample], "test": []}
+    )
+
+    assert counts == {}

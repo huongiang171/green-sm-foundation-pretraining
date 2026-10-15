@@ -396,13 +396,23 @@ def _food_request(
     matching = [item for item in catalogue.food_items if item.category == preferred_category]
     positives = rng.sample(matching, 2)
     positive_ids = {entry.entity_id for entry in positives}
-    selected = positives + rng.sample(
-        [item for item in catalogue.food_items if item.entity_id not in positive_ids], 18
+    hard_negative_count = config.thresholds.min_food_hard_negatives_per_request
+    hard_negatives = rng.sample(
+        [item for item in matching if item.entity_id not in positive_ids], hard_negative_count
     )
-    # The first two labels give a stable 10% candidate-level positive rate; the
-    # remaining catalogue-matched alternatives are explicit hard negatives.
+    used_ids = positive_ids | {entry.entity_id for entry in hard_negatives}
+    selected = positives + hard_negatives + rng.sample(
+        [item for item in catalogue.food_items if item.entity_id not in used_ids],
+        20 - len(positives) - len(hard_negatives),
+    )
+    # The first two labels give a stable 10% candidate-level positive rate;
+    # the next ten share their category and are explicit hard negatives.
     candidates = tuple(
-        _candidate_from_entity(entity, label=1 if index < 2 else 0, hard_negative=index >= 2)
+        _candidate_from_entity(
+            entity,
+            label=1 if index < 2 else 0,
+            hard_negative=2 <= index < 2 + hard_negative_count,
+        )
         for index, entity in enumerate(selected)
     )
     return LogicalRequest(

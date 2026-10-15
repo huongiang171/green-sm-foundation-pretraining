@@ -77,3 +77,13 @@ def test_config_refuses_an_existing_nonempty_output_root(tmp_path: Path) -> None
 
     with pytest.raises(ValueError, match="non-empty output root"):
         GreenSmConfig.from_json(_write_pilot_config(tmp_path, output_root=str(output)))
+
+
+def test_config_digest_changes_when_a_readiness_threshold_changes(tmp_path: Path) -> None:
+    first_path = _write_pilot_config(tmp_path)
+    payload = json.loads(first_path.read_text(encoding="utf-8"))
+    payload["thresholds"]["min_valid_geo_rate"] = 0.70
+    second_path = tmp_path / "changed-threshold.json"
+    second_path.write_text(json.dumps(payload), encoding="utf-8")
+
+    assert GreenSmConfig.from_json(first_path).config_digest != GreenSmConfig.from_json(second_path).config_digest
