@@ -1,0 +1,12 @@
+{
+  "schema_version": "green_sm_pretraining_v1",
+  "linked_root": "data/processed/green_sm_sim_full_v1/green_sm_sim_linked_v1/foundation",
+  "control_root": "data/processed/green_sm_sim_full_v1/green_sm_sim_control_paired_v1/foundation",
+  "output_dir": "artifacts/green_sm_pretraining_full",
+  "seed": 42,
+  "model": {"d_model": 128, "num_heads": 4, "num_layers": 4, "dropout": 0.1, "max_length": 256, "num_user_buckets": 50000, "categorical_pair_buckets": 100003},
+  "dataset": {"max_tokens": 256, "max_event_count": 30},
+  "training": {"batch_size": 64, "max_steps": 20000, "eval_every_steps": 500, "checkpoint_every_steps": 1000, "learning_rate": 0.0001, "weight_decay": 0.01, "shuffle_buffer_size": 2048},
+  "masking": {"probability": 0.15},
+  "objectives": {"categorical_weight": 1.0, "numeric_value_weight": 1.0, "numeric_missing_weight": 1.0, "geo_coordinate_weight": 1.0, "geo_missing_weight": 1.0, "next_action_weight": 1.0}
+}
