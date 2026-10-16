@@ -213,7 +213,10 @@ def test_run_corpus_uses_one_based_eval_checkpoint_schedule_and_immutable_run_di
         value_vocab_size=32, key_vocab_size=8, modality_vocab_size=5, source_vocab_size=4,
         time_gap_vocab_size=4, num_user_buckets=17, categorical_pair_buckets=31,
     )
-    inputs = runner.CorpusRunInputs(Vocabulary(), model, range(3), [object()])
+    # A finite corpus may contain fewer batches than the requested training
+    # budget.  The runner must start a deterministic next epoch, rather than
+    # treating the end of one pass as a failed training run.
+    inputs = runner.CorpusRunInputs(Vocabulary(), model, range(2), [object()])
     config = PretrainingConfig(
         linked_root=tmp_path / "linked", control_root=tmp_path / "control", output_dir=tmp_path / "out",
         seed=7, run_id="schedule", model=ModelSettings(8, 2, 1, 0.0, 256, 17, 31),
@@ -231,13 +234,13 @@ def test_run_corpus_uses_one_based_eval_checkpoint_schedule_and_immutable_run_di
     writes: list[tuple[str, int]] = []
     monkeypatch.setattr(runner, "build_corpus_run_inputs", lambda *args, **kwargs: inputs)
     monkeypatch.setattr(runner, "make_training_state", lambda **kwargs: state)
-    monkeypatch.setattr(
-        runner,
-        "train_one_step",
-        lambda _state, _samples, *, global_step: SimpleNamespace(
-            total=torch.tensor(float(global_step + 1)), counts={}
-        ),
-    )
+    seen_train_batches: list[list[object]] = []
+
+    def train_one_step(_state, samples, *, global_step: int) -> SimpleNamespace:
+        seen_train_batches.append(list(samples))
+        return SimpleNamespace(total=torch.tensor(float(global_step + 1)), counts={})
+
+    monkeypatch.setattr(runner, "train_one_step", train_one_step)
     monkeypatch.setattr(runner, "evaluate_split", lambda *args, **kwargs: {"total": next(evaluations)})
     monkeypatch.setattr(
         artifacts,
@@ -253,6 +256,7 @@ def test_run_corpus_uses_one_based_eval_checkpoint_schedule_and_immutable_run_di
     run_dir = config.output_dir / config.run_id / "linked"
     manifest = __import__("json").loads((run_dir / "run_manifest.json").read_text(encoding="utf-8"))
     assert writes == [("best", 1), ("best", 2), ("last", 2), ("last", 3)]
+    assert seen_train_batches == [[0], [1], [0]]
     assert [entry["step"] for entry in manifest["evaluations"]] == [1, 2, 3]
     assert result["checkpoint"] == str(run_dir / "last.pt")
     with pytest.raises(ValueError, match="refuses non-empty"):

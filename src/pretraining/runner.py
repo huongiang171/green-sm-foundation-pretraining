@@ -237,6 +237,39 @@ def batches(samples: Iterable, *, batch_size: int) -> Iterator[list]:
         yield chunk
 
 
+def repeating_training_batches(
+    samples: Iterable,
+    *,
+    batch_size: int,
+    start_step: int,
+    max_steps: int,
+) -> Iterator[tuple[int, list]]:
+    """Repeat a re-iterable finite corpus until its global step budget is met.
+
+    The global batch index is the training schedule.  Replaying the prefix on
+    resume lets a checkpoint at ``start_step`` continue at the same position in
+    the deterministic epoch order without materializing the corpus in memory.
+    """
+
+    if start_step < 0:
+        raise ValueError("start_step must be non-negative")
+    if max_steps < start_step:
+        raise ValueError("max_steps must be at least start_step")
+
+    global_step = 0
+    while global_step < max_steps:
+        saw_batch = False
+        for sample_batch in batches(samples, batch_size=batch_size):
+            saw_batch = True
+            if global_step >= start_step:
+                yield global_step, sample_batch
+            global_step += 1
+            if global_step >= max_steps:
+                return
+        if not saw_batch:
+            raise ValueError("Cannot train from an empty training split")
+
+
 def _atomic_json(path: Path, value: object) -> None:
     temporary = path.with_suffix(path.suffix + ".tmp")
     temporary.write_text(json.dumps(value, sort_keys=True, indent=2) + "\n", encoding="utf-8")
@@ -429,11 +462,14 @@ def run_corpus(
         resumed_step = resume_training_state(state, resume, expected=identity, map_location=device)
         if resumed_step > requested_steps:
             raise ValueError("resume checkpoint step exceeds requested max_steps")
-    for step, sample_batch in enumerate(batches(inputs.train, batch_size=config.training.batch_size)):
-        if step < resumed_step:
-            continue
-        if step >= requested_steps:
-            break
+        if len(trace) != resumed_step:
+            raise ValueError("Resume checkpoint step must equal the persisted loss trace length")
+    for step, sample_batch in repeating_training_batches(
+        inputs.train,
+        batch_size=config.training.batch_size,
+        start_step=resumed_step,
+        max_steps=requested_steps,
+    ):
         loss = train_one_step(state, sample_batch, global_step=step)
         completed_step = step + 1
         trace.append({"step": completed_step, "total": float(loss.total.item()), "counts": dict(loss.counts)})
