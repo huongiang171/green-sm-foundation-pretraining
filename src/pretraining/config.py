@@ -5,6 +5,7 @@ from __future__ import annotations
 import hashlib
 import json
 import math
+import re
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Mapping
@@ -103,9 +104,17 @@ class TrainingSettings:
     learning_rate: float
     weight_decay: float
     shuffle_buffer_size: int
+    validation_max_batches: int = 100
 
     def __post_init__(self) -> None:
-        for name in ("batch_size", "max_steps", "eval_every_steps", "checkpoint_every_steps", "shuffle_buffer_size"):
+        for name in (
+            "batch_size",
+            "max_steps",
+            "eval_every_steps",
+            "checkpoint_every_steps",
+            "shuffle_buffer_size",
+            "validation_max_batches",
+        ):
             _positive_int(getattr(self, name), name=f"training.{name}")
         if _nonnegative_float(self.learning_rate, name="training.learning_rate") == 0.0:
             raise ValueError("training.learning_rate must be positive")
@@ -145,6 +154,7 @@ class PretrainingConfig:
     masking_probability: float
     objectives: ObjectiveWeights
     config_digest: str
+    run_id: str = "default"
 
     def __post_init__(self) -> None:
         _positive_int(self.seed, name="seed")
@@ -155,6 +165,8 @@ class PretrainingConfig:
             )
         if self.model.max_length != 256:
             raise ValueError("Green SM pretraining requires model.max_length=256")
+        if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]{0,63}", self.run_id):
+            raise ValueError("run_id must be a non-empty slug of at most 64 characters")
 
 
 def _model(value: object) -> ModelSettings:
@@ -204,6 +216,7 @@ def _training(value: object) -> TrainingSettings:
             "learning_rate",
             "weight_decay",
             "shuffle_buffer_size",
+            "validation_max_batches",
         },
     )
     return TrainingSettings(
@@ -217,6 +230,9 @@ def _training(value: object) -> TrainingSettings:
         weight_decay=_nonnegative_float(fields["weight_decay"], name="training.weight_decay"),
         shuffle_buffer_size=_positive_int(
             fields["shuffle_buffer_size"], name="training.shuffle_buffer_size"
+        ),
+        validation_max_batches=_positive_int(
+            fields["validation_max_batches"], name="training.validation_max_batches"
         ),
     )
 
@@ -276,6 +292,7 @@ def load_pretraining_config(path: str | Path) -> PretrainingConfig:
             "training",
             "masking",
             "objectives",
+            "run_id",
         },
     )
     if fields["schema_version"] != SCHEMA_VERSION:
@@ -293,4 +310,5 @@ def load_pretraining_config(path: str | Path) -> PretrainingConfig:
         masking_probability=_unit_interval(masking["probability"], name="masking.probability"),
         objectives=_objectives(fields["objectives"]),
         config_digest=hashlib.sha256(canonical.encode("utf-8")).hexdigest(),
+        run_id=str(fields["run_id"]),
     )

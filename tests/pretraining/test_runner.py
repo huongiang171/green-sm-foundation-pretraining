@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import replace
+from pathlib import Path
 from types import SimpleNamespace
 
 import torch
@@ -181,3 +182,77 @@ def test_build_corpus_inputs_uses_declared_green_sm_geo_contract(tmp_path) -> No
     with torch.no_grad():
         output = FoundationModel(inputs.model_config).encode(batch)
     assert output.short_term.shape == (1, 8)
+
+
+def test_run_corpus_uses_one_based_eval_checkpoint_schedule_and_immutable_run_dir(
+    monkeypatch, tmp_path: Path
+) -> None:
+    """Periodic evaluation must select the lowest-loss checkpoint without overwrite."""
+    from src.pretraining import artifacts, runner
+    from src.pretraining.config import (
+        DatasetSettings,
+        ModelSettings,
+        PretrainingConfig,
+        TrainingSettings,
+    )
+    from src.pretraining.gates import PreflightResult
+
+    class Vocabulary:
+        source_to_id = {"sequence": 1}
+        modality_to_id = {"numeric": 2, "geo": 3}
+
+        def save(self, path: Path) -> None:
+            path.write_text("{}\n", encoding="utf-8")
+
+        def to_metadata(self) -> dict[str, object]:
+            return {}
+
+    model = SimpleNamespace(
+        d_model=8, num_heads=2, num_layers=1, dropout=0.0, max_length=256,
+        value_vocab_size=32, key_vocab_size=8, modality_vocab_size=5, source_vocab_size=4,
+        time_gap_vocab_size=4, num_user_buckets=17, categorical_pair_buckets=31,
+    )
+    inputs = runner.CorpusRunInputs(Vocabulary(), model, range(3), [object()])
+    config = PretrainingConfig(
+        linked_root=tmp_path / "linked", control_root=tmp_path / "control", output_dir=tmp_path / "out",
+        seed=7, run_id="schedule", model=ModelSettings(8, 2, 1, 0.0, 256, 17, 31),
+        dataset=DatasetSettings(256, 30), training=TrainingSettings(1, 3, 1, 2, 0.001, 0.0, 8, 1),
+        masking_probability=0.15, objectives=ObjectiveWeights(1, 1, 1, 1, 1, 1), config_digest="digest",
+    )
+    state = runner.make_training_state(
+        d_model=8, num_heads=2, num_layers=1, dropout=0.0, max_length=256,
+        value_vocab_size=32, key_vocab_size=8, modality_vocab_size=5, source_vocab_size=4,
+        time_gap_vocab_size=4, num_user_buckets=17, categorical_pair_buckets=31,
+        routing=RoutingIds(1, 2, 3), learning_rate=0.001, weight_decay=0.0,
+        objective_weights=ObjectiveWeights(1, 1, 1, 1, 1, 1),
+    )
+    evaluations = iter((3.0, 1.0, 2.0))
+    writes: list[tuple[str, int]] = []
+    monkeypatch.setattr(runner, "build_corpus_run_inputs", lambda *args, **kwargs: inputs)
+    monkeypatch.setattr(runner, "make_training_state", lambda **kwargs: state)
+    monkeypatch.setattr(
+        runner,
+        "train_one_step",
+        lambda _state, _samples, *, global_step: SimpleNamespace(
+            total=torch.tensor(float(global_step + 1)), counts={}
+        ),
+    )
+    monkeypatch.setattr(runner, "evaluate_split", lambda *args, **kwargs: {"total": next(evaluations)})
+    monkeypatch.setattr(
+        artifacts,
+        "save_checkpoint",
+        lambda _state, *, kind, output_dir, identity, global_step: (
+            writes.append((kind, global_step)) or Path(output_dir) / f"{kind}.pt"
+        ),
+    )
+    preflight = PreflightResult("linked", "control", "generator", "world")
+
+    result = runner.run_corpus(config, preflight, corpus="linked", output_dir=config.output_dir, device="cpu")
+
+    run_dir = config.output_dir / config.run_id / "linked"
+    manifest = __import__("json").loads((run_dir / "run_manifest.json").read_text(encoding="utf-8"))
+    assert writes == [("best", 1), ("best", 2), ("last", 2), ("last", 3)]
+    assert [entry["step"] for entry in manifest["evaluations"]] == [1, 2, 3]
+    assert result["checkpoint"] == str(run_dir / "last.pt")
+    with pytest.raises(ValueError, match="refuses non-empty"):
+        runner.run_corpus(config, preflight, corpus="linked", output_dir=config.output_dir, device="cpu")

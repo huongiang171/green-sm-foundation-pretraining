@@ -5,11 +5,13 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import random
 from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Literal
 
 import torch
+import numpy as np
 from torch import nn
 
 from src.foundation_input.types import FoundationBatch
@@ -36,6 +38,34 @@ def _atomic_json(path: Path, value: dict) -> None:
     temporary = path.with_suffix(path.suffix + ".tmp")
     temporary.write_text(json.dumps(value, sort_keys=True, indent=2) + "\n", encoding="utf-8")
     os.replace(temporary, path)
+
+
+def _capture_rng_state() -> dict[str, object]:
+    """Capture every random source that can change a resumed training trajectory."""
+
+    return {
+        "python_rng_state": random.getstate(),
+        "numpy_rng_state": np.random.get_state(),
+        "torch_rng_state": torch.get_rng_state(),
+        "cuda_rng_states": torch.cuda.get_rng_state_all() if torch.cuda.is_available() else None,
+        "torch_deterministic_algorithms": torch.are_deterministic_algorithms_enabled(),
+        "cudnn_benchmark": torch.backends.cudnn.benchmark,
+        "cudnn_deterministic": torch.backends.cudnn.deterministic,
+    }
+
+
+def _restore_rng_state(payload: dict) -> None:
+    try:
+        random.setstate(payload["python_rng_state"])
+        np.random.set_state(payload["numpy_rng_state"])
+        torch.set_rng_state(payload["torch_rng_state"])
+        if torch.cuda.is_available() and payload.get("cuda_rng_states") is not None:
+            torch.cuda.set_rng_state_all(payload["cuda_rng_states"])
+        torch.use_deterministic_algorithms(bool(payload["torch_deterministic_algorithms"]))
+        torch.backends.cudnn.benchmark = bool(payload["cudnn_benchmark"])
+        torch.backends.cudnn.deterministic = bool(payload["cudnn_deterministic"])
+    except (KeyError, TypeError, RuntimeError, ValueError) as error:
+        raise ValueError(f"Checkpoint RNG payload is invalid: {error}") from error
 
 
 class FrozenFoundationEmbedder(nn.Module):
@@ -83,7 +113,7 @@ def save_checkpoint(
         "fusion_state_dict": state.fusion.state_dict(),
         "heads_state_dict": state.heads.state_dict(),
         "optimizer_state_dict": state.optimizer.state_dict(),
-        "torch_rng_state": torch.get_rng_state(),
+        "rng_state": _capture_rng_state(),
     }
     torch.save(payload, temporary)
     os.replace(temporary, path)
@@ -95,7 +125,11 @@ def save_checkpoint(
         **asdict(identity),
         "model": asdict(state.model.config),
     }
-    _atomic_json(directory / "checkpoint_manifest.json", manifest)
+    _atomic_json(directory / f"{kind}_manifest.json", manifest)
+    selected_kind = "best" if (directory / "best_manifest.json").is_file() else "last"
+    selected = json.loads((directory / f"{selected_kind}_manifest.json").read_text(encoding="utf-8"))
+    selected["selected_kind"] = selected_kind
+    _atomic_json(directory / "checkpoint_manifest.json", selected)
     return path
 
 
@@ -156,7 +190,7 @@ def resume_training_state(
         state.fusion.load_state_dict(payload["fusion_state_dict"])
         state.heads.load_state_dict(payload["heads_state_dict"])
         state.optimizer.load_state_dict(payload["optimizer_state_dict"])
-        torch.set_rng_state(payload["torch_rng_state"])
+        _restore_rng_state(payload["rng_state"])
         step = int(payload["global_step"])
     except (KeyError, RuntimeError, TypeError) as error:
         raise ValueError(f"Checkpoint training payload is invalid: {error}") from error

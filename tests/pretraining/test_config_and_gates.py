@@ -75,6 +75,7 @@ def _config_payload(linked_root: Path, control_root: Path, output_dir: Path) -> 
         "linked_root": str(linked_root),
         "control_root": str(control_root),
         "output_dir": str(output_dir),
+        "run_id": "fixture-run",
         "seed": 42,
         "model": {
             "d_model": 16,
@@ -94,6 +95,7 @@ def _config_payload(linked_root: Path, control_root: Path, output_dir: Path) -> 
             "learning_rate": 0.001,
             "weight_decay": 0.0,
             "shuffle_buffer_size": 8,
+            "validation_max_batches": 2,
         },
         "masking": {"probability": 0.15},
         "objectives": {

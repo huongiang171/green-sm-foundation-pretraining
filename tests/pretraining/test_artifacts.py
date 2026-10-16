@@ -1,7 +1,10 @@
 from __future__ import annotations
 
+import json
+import random
 from types import SimpleNamespace
 
+import numpy as np
 import pytest
 import torch
 
@@ -84,3 +87,27 @@ def test_resume_training_state_restores_weights_and_step(tmp_path) -> None:
     assert step == 7
     for expected, actual in zip(original.model.parameters(), resumed.model.parameters(), strict=True):
         torch.testing.assert_close(actual, expected)
+
+
+def test_checkpoint_keeps_per_kind_manifests_and_round_trips_rng(tmp_path) -> None:
+    """A resumable run needs independent last/best identities and all RNG streams."""
+    from src.pretraining.artifacts import resume_training_state, save_checkpoint
+
+    random.seed(7)
+    np.random.seed(7)
+    torch.manual_seed(7)
+    state = _state()
+    checkpoint = save_checkpoint(state, kind="last", output_dir=tmp_path, identity=_identity(), global_step=2)
+    expected = (random.random(), float(np.random.random()), float(torch.rand(())))
+    random.seed(99)
+    np.random.seed(99)
+    torch.manual_seed(99)
+    resume_training_state(_state(), checkpoint, expected=_identity())
+
+    save_checkpoint(state, kind="best", output_dir=tmp_path, identity=_identity(), global_step=2)
+    selected = json.loads((tmp_path / "checkpoint_manifest.json").read_text(encoding="utf-8"))
+
+    assert (tmp_path / "last_manifest.json").is_file()
+    assert (tmp_path / "best_manifest.json").is_file()
+    assert selected["selected_kind"] == "best"
+    assert (random.random(), float(np.random.random()), float(torch.rand(()))) == expected
