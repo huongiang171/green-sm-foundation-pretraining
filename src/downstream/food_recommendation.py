@@ -7,11 +7,13 @@ the request-major :class:`FoodBatch` values built here.
 
 from __future__ import annotations
 
+import argparse
 import hashlib
 import json
 import math
 import os
 import re
+import sys
 import tempfile
 from collections import defaultdict
 from collections.abc import Mapping, Sequence
@@ -139,6 +141,32 @@ def validate_food_data_handoff(config: Mapping[str, Any]) -> dict[str, Any]:
         "data_version": str(data.get("data_version", "unknown")),
         "splits": sorted(_SPLITS),
     }
+
+
+def main(argv: Sequence[str] | None = None) -> int:
+    """Validate the immutable Food handoff before any downstream side effect."""
+
+    parser = argparse.ArgumentParser(description="Green SM frozen-Foundation Food ranking")
+    parser.add_argument("--config", required=True, help="Food ranking YAML configuration")
+    parser.add_argument(
+        "--mode", required=True, choices=("validate", "train", "predict", "demo"),
+        help="validate verifies immutable inputs; other modes require the run lifecycle.",
+    )
+    args = parser.parse_args(argv)
+    try:
+        config = load_food_recommendation_config(args.config)
+        report = validate_food_data_handoff(config)
+    except FoodConfigurationError as error:
+        print(f"Food configuration error: {error}", file=sys.stderr)
+        return 2
+    if args.mode == "validate":
+        print(json.dumps({"status": "data_handoff_valid", **report}, sort_keys=True))
+        return 0
+    print(
+        f"Food {args.mode} is unavailable until the versioned Food run lifecycle is configured.",
+        file=sys.stderr,
+    )
+    return 3
 
 
 def _text(value: Any, *, field: str, request_id: str = "<unknown>") -> str:
@@ -765,3 +793,7 @@ def food_prediction_rows_from_batch(
                 )
             )
     return rows
+
+
+if __name__ == "__main__":  # pragma: no cover - exercised by the module CLI
+    raise SystemExit(main())

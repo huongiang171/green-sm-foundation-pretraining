@@ -453,3 +453,19 @@ def test_food_prediction_export_has_exact_candidates_and_unbounded_ranking_score
     exported = pq.read_table(paths.predictions).to_pylist()
     assert [row["score"] for row in exported] == [3.5, -2.0]
     assert "is_positive" not in exported[0]
+
+
+def test_food_cli_validate_data_checks_checksum_bound_handoff(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    import src.downstream.food_recommendation as food
+
+    monkeypatch.setattr(food, "load_food_recommendation_config", lambda _path: {"task": "food_recommendation"})
+    monkeypatch.setattr(
+        food,
+        "validate_food_data_handoff",
+        lambda _config: {"food_manifest_sha256": "food", "data_version": "pilot"},
+    )
+
+    assert food.main(["--config", "fixture.yaml", "--mode", "validate"]) == 0
+    assert '"status": "data_handoff_valid"' in capsys.readouterr().out
