@@ -379,3 +379,77 @@ def test_frozen_foundation_parameters_receive_no_gradient() -> None:
 
     assert all(parameter.grad is None for parameter in embedder.parameters())
     assert any(parameter.grad is not None for parameter in ranker.parameters())
+
+
+def test_food_preflight_rejects_wrong_food_manifest_checksum(tmp_path: Path) -> None:
+    from src.downstream.food_recommendation import (
+        FoodConfigurationError,
+        validate_food_data_handoff,
+    )
+
+    food_manifest = tmp_path / "food-manifest.json"
+    food_manifest.write_text("{}", encoding="utf-8")
+    config = {
+        "task": "food_recommendation",
+        "freeze_foundation": True,
+        "data": {
+            "opportunities_root": str(tmp_path),
+            "manifest_path": str(food_manifest),
+            "foundation_manifest_path": str(tmp_path / "foundation-manifest.json"),
+            "expected_food_manifest_sha256": "0" * 64,
+            "expected_foundation_manifest_sha256": "1" * 64,
+        },
+    }
+
+    with pytest.raises(FoodConfigurationError, match="Food manifest SHA-256 mismatch"):
+        validate_food_data_handoff(config)
+
+
+def test_food_prediction_export_has_exact_candidates_and_unbounded_ranking_scores(
+    tmp_path: Path,
+) -> None:
+    from src.contracts.output import OutputContractV1
+    from src.downstream.food_recommendation import (
+        FoodFeatureArtifacts,
+        build_food_batches,
+        expected_food_candidates,
+        food_prediction_rows_from_batch,
+    )
+
+    rows = [
+        _food_opportunity(split="validation", candidate_id="candidate-1", item_id="candidate-1"),
+        _food_opportunity(
+            split="validation", candidate_id="candidate-2", item_id="candidate-2", is_positive=0
+        ),
+    ]
+    batch = build_food_batches(
+        rows,
+        encoded_samples_by_id=_encoded_samples_by_id(),
+        feature_artifacts=FoodFeatureArtifacts.fit(_train_rows()),
+        batch_size=1,
+        item_hash_buckets=17,
+        merchant_hash_buckets=13,
+        require_labels=True,
+    )[0]
+    paths = OutputContractV1.write_predictions(
+        food_prediction_rows_from_batch(batch, torch.tensor([[3.5, -2.0]]), split="validation"),
+        expected_candidates=expected_food_candidates(
+            rows, data_version="test-v1", source_checksums={"food_manifest_sha256": "abc"}
+        ),
+        output_dir=tmp_path / "predictions" / "validation",
+        split="validation",
+        run_metadata={
+            "selected_checkpoint_sha256": "checkpoint",
+            "vocabulary_sha256": "vocabulary",
+            "foundation_manifest_sha256": "foundation",
+            "food_manifest_sha256": "food",
+            "config_digest": "config",
+            "seed": 42,
+            "run_id": "food-run",
+            "score_semantics": "ranking",
+        },
+    )
+
+    exported = pq.read_table(paths.predictions).to_pylist()
+    assert [row["score"] for row in exported] == [3.5, -2.0]
+    assert "is_positive" not in exported[0]

@@ -11,18 +11,21 @@ import hashlib
 import json
 import math
 import os
+import re
 import tempfile
 from collections import defaultdict
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Literal
 
 import pyarrow.parquet as pq
 import torch
+import yaml
 from torch import nn
 
+from src.contracts.output import ExpectedCandidate, PredictionRow, VerifiedOpportunityIndex
 from src.foundation_input.dataset import DatasetConfig, encode_sample, foundation_collate
 from src.foundation_input.loader import iter_normalized_samples
 from src.foundation_input.types import EncodedSample, FoundationBatch
@@ -33,6 +36,109 @@ FoodSplit = Literal["train", "validation", "test"]
 _SPLITS = frozenset({"train", "validation", "test"})
 _PAD = "<PAD>"
 _UNK = "<UNK>"
+_SHA256 = re.compile(r"^[0-9a-f]{64}$")
+
+
+class FoodConfigurationError(ValueError):
+    """The Food configuration or immutable upstream handoff is invalid."""
+
+
+def _sha256(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as handle:
+        for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def _read_json(path: Path, *, label: str) -> dict[str, Any]:
+    try:
+        value = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as error:
+        raise FoodConfigurationError(f"Cannot read {label}: {path}") from error
+    if not isinstance(value, dict):
+        raise FoodConfigurationError(f"{label} must be a JSON object")
+    return value
+
+
+def _mapping(value: Any, *, label: str) -> Mapping[str, Any]:
+    if not isinstance(value, Mapping):
+        raise FoodConfigurationError(f"{label} must be a mapping")
+    return value
+
+
+def _config_text(mapping: Mapping[str, Any], key: str, *, label: str) -> str:
+    value = mapping.get(key)
+    if not isinstance(value, str) or not value.strip():
+        raise FoodConfigurationError(f"{label}.{key} must be a non-empty string")
+    return value.strip()
+
+
+def _verify_sha256(path: Path, expected: str, *, label: str) -> None:
+    if not _SHA256.fullmatch(expected):
+        raise FoodConfigurationError(f"{label} expected SHA-256 must be 64 lowercase hexadecimal characters")
+    if not path.is_file():
+        raise FoodConfigurationError(f"{label} does not exist: {path}")
+    if _sha256(path) != expected:
+        raise FoodConfigurationError(f"{label} SHA-256 mismatch")
+
+
+def load_food_recommendation_config(path: str | Path) -> dict[str, Any]:
+    """Load configuration only; validation has no training side effects."""
+
+    source = Path(path)
+    try:
+        config = yaml.safe_load(source.read_text(encoding="utf-8"))
+    except (OSError, yaml.YAMLError) as error:
+        raise FoodConfigurationError(f"Cannot read Food config: {source}") from error
+    if not isinstance(config, dict):
+        raise FoodConfigurationError("Food config root must be a mapping")
+    return config
+
+
+def validate_food_data_handoff(config: Mapping[str, Any]) -> dict[str, Any]:
+    """Verify immutable Food/Foundation manifests and all split parquet checksums."""
+
+    if config.get("task") != "food_recommendation":
+        raise FoodConfigurationError("config.task must be 'food_recommendation'")
+    if config.get("freeze_foundation") is not True:
+        raise FoodConfigurationError("config.freeze_foundation must be true")
+    data = _mapping(config.get("data"), label="config.data")
+    opportunities_root = Path(_config_text(data, "opportunities_root", label="config.data"))
+    food_manifest_path = Path(_config_text(data, "manifest_path", label="config.data"))
+    foundation_manifest_path = Path(
+        _config_text(data, "foundation_manifest_path", label="config.data")
+    )
+    food_sha = _config_text(data, "expected_food_manifest_sha256", label="config.data")
+    foundation_sha = _config_text(
+        data, "expected_foundation_manifest_sha256", label="config.data"
+    )
+    _verify_sha256(food_manifest_path, food_sha, label="Food manifest")
+    _verify_sha256(foundation_manifest_path, foundation_sha, label="Foundation manifest")
+    food_manifest = _read_json(food_manifest_path, label="Food manifest")
+    foundation_manifest = _read_json(foundation_manifest_path, label="Foundation manifest")
+    if food_manifest.get("schema_version") != "green_sm_food_opportunities_v1":
+        raise FoodConfigurationError("Food manifest has unsupported schema_version")
+    if food_manifest.get("foundation_manifest_sha256") != foundation_sha:
+        raise FoodConfigurationError("Food manifest is not linked to the configured Foundation manifest")
+    if foundation_manifest.get("status") not in {None, "complete"}:
+        raise FoodConfigurationError("Foundation manifest status must be complete")
+    files = _mapping(food_manifest.get("files"), label="Food manifest files")
+    if set(files) != _SPLITS:
+        raise FoodConfigurationError("Food manifest must declare exactly train, validation, and test")
+    for split in sorted(_SPLITS):
+        entry = _mapping(files[split], label=f"Food manifest files.{split}")
+        _verify_sha256(
+            opportunities_root / _config_text(entry, "file", label=f"Food manifest files.{split}"),
+            _config_text(entry, "sha256", label=f"Food manifest files.{split}"),
+            label=f"Food {split} parquet",
+        )
+    return {
+        "food_manifest_sha256": food_sha,
+        "foundation_manifest_sha256": foundation_sha,
+        "data_version": str(data.get("data_version", "unknown")),
+        "splits": sorted(_SPLITS),
+    }
 
 
 def _text(value: Any, *, field: str, request_id: str = "<unknown>") -> str:
@@ -609,3 +715,53 @@ def frozen_foundation_food_logits(
         price_values=batch.price_values,
         geo_values=batch.geo_values,
     )
+
+
+def expected_food_candidates(
+    rows: Sequence[FoodOpportunity],
+    *,
+    data_version: str,
+    source_checksums: Mapping[str, str],
+) -> VerifiedOpportunityIndex:
+    """Build the immutable candidate universe permitted in Food prediction output."""
+
+    expected = [
+        ExpectedCandidate(
+            request_id=row.request_id,
+            candidate_id=row.candidate_id,
+            user_id=row.user_id,
+            cutoff_timestamp=datetime.fromtimestamp(row.cutoff_timestamp, tz=timezone.utc).isoformat(),
+            split=row.split,  # type: ignore[arg-type]
+        )
+        for row in rows
+        if row.split in {"validation", "test"}
+    ]
+    return VerifiedOpportunityIndex(
+        expected,
+        task="food_recommendation",
+        data_version=data_version,
+        source_checksums=source_checksums,
+    )
+
+
+def food_prediction_rows_from_batch(
+    batch: FoodBatch, scores: torch.Tensor, *, split: Literal["validation", "test"]
+) -> list[PredictionRow]:
+    """Flatten original candidate rows only; padding and labels cannot leak into export."""
+
+    if scores.shape != batch.candidate_mask.shape:
+        raise ValueError("Food scores must align with request-major candidate_mask")
+    rows: list[PredictionRow] = []
+    for request_index, opportunities in enumerate(batch.opportunities):
+        for candidate_index, opportunity in enumerate(opportunities):
+            if not bool(batch.candidate_mask[request_index, candidate_index]):
+                raise AssertionError("original Food opportunity was unexpectedly masked as padding")
+            rows.append(
+                PredictionRow(
+                    request_id=opportunity.request_id,
+                    candidate_id=opportunity.candidate_id,
+                    score=float(scores[request_index, candidate_index]),
+                    split=split,
+                )
+            )
+    return rows
