@@ -4,15 +4,13 @@ from __future__ import annotations
 
 import hashlib
 import json
-import math
 import random
+from collections.abc import Iterable
 from dataclasses import dataclass
 from datetime import datetime, timedelta
-from typing import Iterable, Mapping
 from zoneinfo import ZoneInfo
 
 from .config import GreenSmConfig
-
 
 TZ = ZoneInfo("Asia/Ho_Chi_Minh")
 SIMULATION_START = datetime(2026, 9, 1, tzinfo=TZ)

@@ -8,7 +8,6 @@ from src.models.encoder import FoundationModel, FoundationModelConfig
 from src.pretraining.config import ObjectiveWeights, RoutingIds
 from src.pretraining.masking import corrupt_for_masked_reconstruction
 
-
 ROUTING = RoutingIds(sequence=1, numeric=2, geo=3)
 WEIGHTS = ObjectiveWeights(
     categorical=1.0,

@@ -8,16 +8,20 @@ import json
 import os
 import random
 import sys
-from collections.abc import Iterable, Iterator
+from collections.abc import Iterable, Iterator, Mapping
 from dataclasses import asdict, dataclass
 from itertools import chain, islice
 from pathlib import Path
-from typing import Literal, Mapping
+from typing import Literal
 
-import torch
 import numpy as np
+import torch
 
-from src.foundation_input.dataset import DatasetConfig, FoundationPretrainDataset, foundation_collate
+from src.foundation_input.dataset import (
+    DatasetConfig,
+    FoundationPretrainDataset,
+    foundation_collate,
+)
 from src.foundation_input.loader import iter_normalized_samples
 from src.foundation_input.vocab import (
     VocabularyArtifacts,
@@ -25,11 +29,16 @@ from src.foundation_input.vocab import (
     fit_vocabulary_from_samples,
 )
 from src.models.encoder import FoundationModel, FoundationModelConfig
-from src.models.objectives import LossBreakdown, PretrainingHeads, UserEmbeddingFusion, compute_pretraining_loss
+from src.models.objectives import (
+    LossBreakdown,
+    PretrainingHeads,
+    UserEmbeddingFusion,
+    compute_pretraining_loss,
+)
 
 from .config import ObjectiveWeights, PretrainingConfig, RoutingIds
-from .green_sm_contract import load_green_sm_tokenizer_config
 from .gates import PreflightResult, validate_v3_batch_contract
+from .green_sm_contract import load_green_sm_tokenizer_config
 from .masking import corrupt_for_masked_reconstruction
 
 

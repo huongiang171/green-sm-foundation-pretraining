@@ -10,8 +10,8 @@ from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Literal
 
-import torch
 import numpy as np
+import torch
 from torch import nn
 
 from src.foundation_input.types import FoundationBatch
@@ -167,10 +167,10 @@ def _load_payload(
     except (OSError, RuntimeError) as error:
         raise ValueError(f"Cannot load Foundation checkpoint {path}: {error}") from error
     if not isinstance(payload, dict):
-        raise ValueError("Checkpoint payload must be an object")
+        raise TypeError("Checkpoint payload must be an object")
     actual = payload.get("identity")
     if not isinstance(actual, dict):
-        raise ValueError("Checkpoint is missing identity metadata")
+        raise TypeError("Checkpoint is missing identity metadata")
     for name, value in asdict(expected).items():
         if actual.get(name) != value:
             raise ValueError(f"Checkpoint {name} mismatch: expected {value!r}, got {actual.get(name)!r}")

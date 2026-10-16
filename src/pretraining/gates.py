@@ -38,7 +38,7 @@ def _report(root: Path) -> dict[str, Any]:
     except (OSError, json.JSONDecodeError) as error:
         raise ValueError(f"Cannot read Green SM readiness report {path}: {error}") from error
     if not isinstance(value, dict):
-        raise ValueError(f"Green SM readiness report must be an object: {path}")
+        raise TypeError(f"Green SM readiness report must be an object: {path}")
     required = {
         "readiness_passed",
         "data_geo_contract_version",

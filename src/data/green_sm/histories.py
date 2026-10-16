@@ -3,9 +3,9 @@
 from __future__ import annotations
 
 import hashlib
+from collections.abc import Mapping
 from dataclasses import dataclass
 from datetime import datetime, timedelta
-from typing import Mapping
 
 from .world import SIMULATION_START, Catalogue, LogicalRequest, SimulatedUser, TargetWorld, _rng
 

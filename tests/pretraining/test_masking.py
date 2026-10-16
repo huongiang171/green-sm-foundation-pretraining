@@ -6,7 +6,6 @@ import torch
 
 from src.pretraining.config import RoutingIds
 
-
 ROUTING = RoutingIds(sequence=1, numeric=2, geo=3)
 
 

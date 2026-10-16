@@ -8,7 +8,11 @@ from pathlib import Path
 
 import torch
 
-from src.pretraining.artifacts import CheckpointIdentity, FrozenFoundationEmbedder, load_frozen_embedder
+from src.pretraining.artifacts import (
+    CheckpointIdentity,
+    FrozenFoundationEmbedder,
+    load_frozen_embedder,
+)
 
 
 def _sha256(path: Path) -> str:
@@ -30,7 +34,7 @@ def load_foundation_checkpoint(
     except (OSError, json.JSONDecodeError) as error:
         raise ValueError(f"Cannot read Foundation checkpoint manifest {manifest_file}: {error}") from error
     if not isinstance(manifest, dict):
-        raise ValueError("Foundation checkpoint manifest must be an object")
+        raise TypeError("Foundation checkpoint manifest must be an object")
     if manifest.get("schema_version") != "green_sm_foundation_checkpoint_v1":
         raise ValueError("Foundation checkpoint manifest has unsupported schema_version")
     if manifest.get("checkpoint_format_version") != 1:

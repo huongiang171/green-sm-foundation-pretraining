@@ -7,17 +7,23 @@ import hashlib
 import json
 import re
 from collections import Counter, defaultdict
+from collections.abc import Iterable, Mapping
 from datetime import datetime, timedelta
 from pathlib import Path
-from typing import Any, Iterable, Mapping
 
 import pyarrow as pa
 import pyarrow.parquet as pq
 
 from .config import GreenSmConfig
 from .histories import EventGroup, HistoryView, build_history_views
-from .world import SIMULATION_START, LogicalRequest, SimulatedUser, TargetWorld, _rng, build_target_world
-
+from .world import (
+    SIMULATION_START,
+    LogicalRequest,
+    SimulatedUser,
+    TargetWorld,
+    _rng,
+    build_target_world,
+)
 
 SCHEMA_VERSION = "omnibehavior_pretraining_v2"
 _DATA_VERSION = re.compile(r"^green_sm_sim_(?:pilot|full)_v(?P<version>[1-9][0-9]*)$")

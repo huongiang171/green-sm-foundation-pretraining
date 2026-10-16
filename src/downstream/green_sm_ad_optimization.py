@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 
 import pyarrow.parquet as pq
@@ -18,14 +18,13 @@ from .ad_optimization import (
     AdBatch,
     AdOpportunity,
     AdRanker,
-    build_ad_batches,
     load_encoded_foundation_samples_for_ads,
 )
 
 
 def _timestamp(value: object, *, field: str) -> int:
     if not isinstance(value, datetime):
-        raise ValueError(f"Green SM Ads {field} must be a timestamp")
+        raise TypeError(f"Green SM Ads {field} must be a timestamp")
     return int(value.timestamp())
 
 
@@ -124,7 +123,7 @@ def expected_green_sm_candidates(
     candidates = [
         ExpectedCandidate(
             row.request_id, row.candidate_id, row.user_id,
-            datetime.fromtimestamp(row.cutoff_timestamp).isoformat(), row.split,  # type: ignore[arg-type]
+            datetime.fromtimestamp(row.cutoff_timestamp, tz=timezone.utc).isoformat(), row.split,  # type: ignore[arg-type]
         )
         for row in rows if row.split in {"validation", "test"}
     ]

@@ -4,8 +4,8 @@ from dataclasses import replace
 from pathlib import Path
 from types import SimpleNamespace
 
-import torch
 import pytest
+import torch
 
 from src.data.green_sm.build import build_dataset, root_names
 from src.data.green_sm.config import GreenSmConfig
@@ -198,8 +198,9 @@ def test_run_corpus_uses_one_based_eval_checkpoint_schedule_and_immutable_run_di
     from src.pretraining.gates import PreflightResult
 
     class Vocabulary:
-        source_to_id = {"sequence": 1}
-        modality_to_id = {"numeric": 2, "geo": 3}
+        def __init__(self) -> None:
+            self.source_to_id = {"sequence": 1}
+            self.modality_to_id = {"numeric": 2, "geo": 3}
 
         def save(self, path: Path) -> None:
             path.write_text("{}\n", encoding="utf-8")

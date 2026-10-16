@@ -7,7 +7,7 @@ from dataclasses import dataclass
 
 import torch
 
-from src.foundation_input.types import FoundationBatch, SPECIAL_TOKEN_IDS
+from src.foundation_input.types import SPECIAL_TOKEN_IDS, FoundationBatch
 
 from .config import RoutingIds
 

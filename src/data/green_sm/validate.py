@@ -7,15 +7,16 @@ import json
 import math
 from bisect import bisect_right
 from collections import Counter, defaultdict
-from dataclasses import asdict
+from collections.abc import Iterable, Mapping
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Iterable, Mapping
+from typing import Any
 
 import pyarrow.parquet as pq
 
 from src.foundation_input.loader import iter_normalized_samples
 from src.foundation_input.manifest import DatasetManifest, load_manifest
+
 from .build import root_names
 from .config import GreenSmConfig
 from .world import TargetWorld, build_target_world
@@ -64,8 +65,7 @@ def _split_for_time(value: datetime) -> str:
 
 
 def _walk_values(payload: Mapping[str, Any]) -> Iterable[tuple[str, Any]]:
-    for key, value in payload.items():
-        yield key, value
+    yield from payload.items()
 
 
 def _geo_valid(value: object) -> bool:
@@ -171,7 +171,7 @@ def _read_opportunities(root: Path, task: str, foundation_hash: str) -> dict[str
     for split in ("train", "validation", "test"):
         info = manifest.get("files", {}).get(split)
         if not isinstance(info, dict):
-            raise ValueError(f"{task} manifest missing {split} file metadata")
+            raise TypeError(f"{task} manifest missing {split} file metadata")
         path = task_root / str(info.get("file", ""))
         if not path.is_file() or _sha256(path) != info.get("sha256"):
             raise ValueError(f"{task} opportunity checksum mismatch: {path}")

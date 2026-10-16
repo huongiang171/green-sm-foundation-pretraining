@@ -2,11 +2,12 @@
 
 from __future__ import annotations
 
+import math
 from bisect import bisect_right
+from collections.abc import Mapping
 from dataclasses import dataclass, field
 from datetime import datetime
-import math
-from typing import Any, Mapping
+from typing import Any
 
 from .types import CanonicalSample, KeyValueToken, TokenRecord
 from .vocab import VocabularyArtifacts

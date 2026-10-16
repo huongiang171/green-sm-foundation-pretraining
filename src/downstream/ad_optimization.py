@@ -20,8 +20,8 @@ from torch import nn
 from torch.nn import functional as F
 
 from src.foundation_input.dataset import DatasetConfig, FoundationPretrainDataset, encode_sample
-from src.foundation_input.tokenizer import TokenizerConfig
 from src.foundation_input.loader import iter_normalized_samples
+from src.foundation_input.tokenizer import TokenizerConfig
 from src.foundation_input.types import EncodedSample, FoundationBatch
 from src.foundation_input.vocab import VocabularyArtifacts
 

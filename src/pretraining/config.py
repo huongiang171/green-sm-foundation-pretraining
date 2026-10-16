@@ -6,17 +6,17 @@ import hashlib
 import json
 import math
 import re
+from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Mapping
-
+from typing import Any
 
 SCHEMA_VERSION = "green_sm_pretraining_v1"
 
 
 def _mapping(value: object, *, name: str, keys: set[str]) -> Mapping[str, Any]:
     if not isinstance(value, Mapping):
-        raise ValueError(f"{name} must be an object")
+        raise TypeError(f"{name} must be an object")
     actual = set(value)
     if actual != keys:
         missing = sorted(keys - actual)

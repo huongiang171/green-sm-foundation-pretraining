@@ -33,7 +33,7 @@ def load_green_sm_tokenizer_config(root: str | Path) -> TokenizerConfig:
         raise ValueError("Green SM preprocessing contract must declare batch contract v3")
     contract = payload.get("tokenizer_contract")
     if not isinstance(contract, dict):
-        raise ValueError("Green SM preprocessing contract lacks tokenizer_contract")
+        raise TypeError("Green SM preprocessing contract lacks tokenizer_contract")
     try:
         profile = frozenset(str(value) for value in contract["profile_allowlist"])
         context = {
