@@ -8,10 +8,12 @@ the request-major :class:`FoodBatch` values built here.
 from __future__ import annotations
 
 import argparse
+import copy
 import hashlib
 import json
 import math
 import os
+import random
 import re
 import sys
 import tempfile
@@ -22,17 +24,25 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Literal
 
+import numpy as np
 import pyarrow.parquet as pq
 import torch
 import yaml
 from torch import nn
 
-from src.contracts.output import ExpectedCandidate, PredictionRow, VerifiedOpportunityIndex
+from src.contracts.output import (
+    ExpectedCandidate,
+    OutputContractV1,
+    OutputPaths,
+    PredictionRow,
+    VerifiedOpportunityIndex,
+)
 from src.foundation_input.dataset import DatasetConfig, encode_sample, foundation_collate
 from src.foundation_input.loader import iter_normalized_samples
 from src.foundation_input.types import EncodedSample, FoundationBatch
 from src.foundation_input.vocab import VocabularyArtifacts
 from src.pretraining.green_sm_contract import load_green_sm_tokenizer_config
+from src.training.checkpoint import load_foundation_checkpoint
 
 FoodSplit = Literal["train", "validation", "test"]
 _SPLITS = frozenset({"train", "validation", "test"})
@@ -144,13 +154,17 @@ def validate_food_data_handoff(config: Mapping[str, Any]) -> dict[str, Any]:
 
 
 def main(argv: Sequence[str] | None = None) -> int:
-    """Validate the immutable Food handoff before any downstream side effect."""
+    """Run a checksum-bound Food validation, training, or prediction lifecycle."""
 
     parser = argparse.ArgumentParser(description="Green SM frozen-Foundation Food ranking")
     parser.add_argument("--config", required=True, help="Food ranking YAML configuration")
     parser.add_argument(
         "--mode", required=True, choices=("validate", "train", "predict", "demo"),
         help="validate verifies immutable inputs; other modes require the run lifecycle.",
+    )
+    parser.add_argument(
+        "--split", choices=("validation", "test"),
+        help="prediction split; required when --mode predict",
     )
     args = parser.parse_args(argv)
     try:
@@ -162,10 +176,21 @@ def main(argv: Sequence[str] | None = None) -> int:
     if args.mode == "validate":
         print(json.dumps({"status": "data_handoff_valid", **report}, sort_keys=True))
         return 0
-    print(
-        f"Food {args.mode} is unavailable until the versioned Food run lifecycle is configured.",
-        file=sys.stderr,
-    )
+    try:
+        if args.mode == "train":
+            result = run_food_training(config)
+            print(json.dumps({"status": "food_training_complete", **result}, sort_keys=True))
+            return 0
+        if args.mode == "predict":
+            if args.split is None:
+                parser.error("--split is required when --mode predict")
+            result = run_food_prediction(config, split=args.split)
+            print(json.dumps({"status": "food_prediction_exported", "predictions": str(result.predictions)}, sort_keys=True))
+            return 0
+    except FoodConfigurationError as error:
+        print(f"Food configuration error: {error}", file=sys.stderr)
+        return 2
+    print("Food demo is not implemented; use --mode predict --split test for export.", file=sys.stderr)
     return 3
 
 
@@ -657,6 +682,14 @@ class FoodRanker(nn.Module):
         self.scorer = nn.Sequential(
             nn.Linear(2 * d_model, d_model), nn.GELU(), nn.Dropout(dropout), nn.Linear(d_model, 1)
         )
+        self.config = {
+            "d_model": d_model,
+            "item_hash_buckets": item_hash_buckets,
+            "merchant_hash_buckets": merchant_hash_buckets,
+            "num_categories": num_categories,
+            "num_geo_cells": num_geo_cells,
+            "dropout": dropout,
+        }
 
     def forward(
         self,
@@ -742,6 +775,451 @@ def frozen_foundation_food_logits(
         geo_cell_ids=batch.geo_cell_ids,
         price_values=batch.price_values,
         geo_values=batch.geo_values,
+    )
+
+
+def _to_device_food_batch(batch: FoodBatch, device: torch.device) -> FoodBatch:
+    copied = copy.copy(batch)
+    foundation = copy.copy(batch.foundation_batch)
+    for name, value in vars(foundation).items():
+        if isinstance(value, torch.Tensor):
+            setattr(foundation, name, value.to(device))
+        elif name == "targets":
+            foundation.targets = {key: tensor.to(device) for key, tensor in value.items()}
+    copied.foundation_batch = foundation
+    for name in (
+        "item_hash_ids", "merchant_hash_ids", "category_ids", "geo_cell_ids",
+        "price_values", "geo_values", "positive_mask", "candidate_mask",
+    ):
+        setattr(copied, name, getattr(batch, name).to(device))
+    return copied
+
+
+def _atomic_json(path: Path, value: Mapping[str, Any]) -> None:
+    temporary = path.with_suffix(path.suffix + ".tmp")
+    temporary.write_text(json.dumps(value, sort_keys=True, indent=2) + "\n", encoding="utf-8")
+    os.replace(temporary, path)
+
+
+def _atomic_torch_save(path: Path, value: Mapping[str, Any]) -> None:
+    temporary = path.with_suffix(path.suffix + ".tmp")
+    torch.save(dict(value), temporary)
+    os.replace(temporary, path)
+
+
+def _mean_food_loss(
+    embedder: Any, ranker: FoodRanker, batches: Sequence[FoodBatch], device: torch.device
+) -> float:
+    ranker.eval()
+    losses: list[float] = []
+    with torch.no_grad():
+        for batch in batches:
+            moved = _to_device_food_batch(batch, device)
+            scores = frozen_foundation_food_logits(embedder, ranker, moved)
+            loss, _ = masked_multi_positive_listwise_loss(
+                scores, moved.positive_mask, moved.candidate_mask
+            )
+            losses.append(float(loss.item()))
+    if not losses:
+        raise ValueError("Food validation requires at least one batch")
+    return sum(losses) / len(losses)
+
+
+def train_food_ranker(
+    *,
+    embedder: Any,
+    ranker: FoodRanker,
+    train_batches: Sequence[FoodBatch],
+    validation_batches: Sequence[FoodBatch],
+    feature_artifacts: FoodFeatureArtifacts,
+    run_dir: str | Path,
+    epochs: int,
+    learning_rate: float,
+    weight_decay: float,
+    device: str | torch.device,
+    run_metadata: Mapping[str, Any],
+) -> dict[str, Any]:
+    """Train only FoodRanker parameters and write reloadable run artifacts."""
+
+    if epochs < 1 or learning_rate <= 0.0 or weight_decay < 0.0:
+        raise ValueError("epochs and learning_rate must be positive; weight_decay cannot be negative")
+    if not train_batches or not validation_batches:
+        raise ValueError("Food training and validation batches must both be non-empty")
+    destination = Path(run_dir)
+    if destination.exists() and any(destination.iterdir()):
+        raise ValueError(f"Food run directory must be new and empty: {destination}")
+    destination.mkdir(parents=True, exist_ok=True)
+    resolved_device = torch.device(device)
+    embedder.to(resolved_device)
+    embedder.eval()
+    for parameter in embedder.parameters():
+        parameter.requires_grad_(False)
+    ranker.to(resolved_device)
+    optimizer = torch.optim.AdamW(ranker.parameters(), lr=learning_rate, weight_decay=weight_decay)
+    feature_path = destination / "feature_artifacts.json"
+    feature_artifacts.save(feature_path)
+    metrics: list[dict[str, float | int]] = []
+    best_validation = math.inf
+    best_epoch = 0
+    for epoch in range(1, epochs + 1):
+        ranker.train()
+        train_losses: list[float] = []
+        for batch in train_batches:
+            moved = _to_device_food_batch(batch, resolved_device)
+            optimizer.zero_grad(set_to_none=True)
+            scores = frozen_foundation_food_logits(embedder, ranker, moved)
+            loss, _ = masked_multi_positive_listwise_loss(
+                scores, moved.positive_mask, moved.candidate_mask
+            )
+            loss.backward()
+            optimizer.step()
+            train_losses.append(float(loss.detach().item()))
+        validation_loss = _mean_food_loss(embedder, ranker, validation_batches, resolved_device)
+        metrics.append({
+            "epoch": epoch,
+            "train_listwise_loss": sum(train_losses) / len(train_losses),
+            "validation_listwise_loss": validation_loss,
+        })
+        payload = {"ranker_config": ranker.config, "ranker_state_dict": ranker.state_dict(), "epoch": epoch}
+        _atomic_torch_save(destination / "last.pt", payload)
+        if validation_loss < best_validation:
+            best_validation = validation_loss
+            best_epoch = epoch
+            _atomic_torch_save(destination / "best.pt", payload)
+    metrics_path = destination / "train_metrics.jsonl"
+    metrics_path.write_text(
+        "".join(json.dumps(row, sort_keys=True) + "\n" for row in metrics), encoding="utf-8"
+    )
+    manifest = {
+        **dict(run_metadata),
+        "schema_version": "green_sm_food_ranker_v1",
+        "feature_artifacts": feature_path.name,
+        "feature_artifacts_sha256": _sha256(feature_path),
+        "best_checkpoint": "best.pt",
+        "best_checkpoint_sha256": _sha256(destination / "best.pt"),
+        "last_checkpoint": "last.pt",
+        "last_checkpoint_sha256": _sha256(destination / "last.pt"),
+        "ranker_config": ranker.config,
+        "best_epoch": best_epoch,
+        "best_validation_loss": best_validation,
+        "metrics": metrics_path.name,
+    }
+    _atomic_json(destination / "run_manifest.json", manifest)
+    return {"best_validation_loss": best_validation, "best_epoch": best_epoch, "run_dir": str(destination)}
+
+
+def _config_digest(config: Mapping[str, Any]) -> str:
+    return hashlib.sha256(
+        json.dumps(dict(config), sort_keys=True, separators=(",", ":")).encode()
+    ).hexdigest()
+
+
+def _seed_food_training(seed: int) -> None:
+    random.seed(seed)
+    np.random.seed(seed)
+    torch.manual_seed(seed)
+    if torch.cuda.is_available():
+        torch.cuda.manual_seed_all(seed)
+
+
+def _load_verified_foundation(config: Mapping[str, Any], *, device: str | torch.device) -> tuple[Any, dict[str, Any]]:
+    checkpoint = _mapping(config.get("checkpoint"), label="config.checkpoint")
+    checkpoint_path = Path(_config_text(checkpoint, "path", label="config.checkpoint"))
+    manifest_path = Path(_config_text(checkpoint, "manifest_path", label="config.checkpoint"))
+    expected_sha = _config_text(checkpoint, "expected_sha256", label="config.checkpoint")
+    _verify_sha256(checkpoint_path, expected_sha, label="Foundation checkpoint")
+    embedder = load_foundation_checkpoint(checkpoint_path, manifest_path, map_location=device)
+    return embedder, _read_json(manifest_path, label="Foundation checkpoint manifest")
+
+
+def verify_foundation_checkpoint_binding(
+    *,
+    data: Mapping[str, Any],
+    handoff: Mapping[str, Any],
+    foundation_checkpoint_manifest: Mapping[str, Any],
+) -> None:
+    """Require the selected Foundation checkpoint to originate from this corpus."""
+
+    foundation_corpus = _config_text(data, "foundation_corpus", label="config.data")
+    if foundation_corpus not in {"linked", "control"}:
+        raise FoodConfigurationError("config.data.foundation_corpus must be 'linked' or 'control'")
+    checkpoint_manifest_key = f"{foundation_corpus}_manifest_sha256"
+    if foundation_checkpoint_manifest.get(checkpoint_manifest_key) != handoff.get(
+        "foundation_manifest_sha256"
+    ):
+        raise FoodConfigurationError(
+            "Foundation checkpoint is not bound to the configured Food foundation corpus"
+        )
+
+
+def _food_model_settings(config: Mapping[str, Any]) -> tuple[Mapping[str, Any], Mapping[str, Any]]:
+    model = _mapping(config.get("model"), label="config.model")
+    training = _mapping(config.get("training"), label="config.training")
+    for key in ("item_hash_buckets", "merchant_hash_buckets"):
+        if not isinstance(model.get(key), int) or int(model[key]) < 2:
+            raise FoodConfigurationError(f"config.model.{key} must be an integer >= 2")
+    if not isinstance(model.get("dropout"), (int, float)) or not 0.0 <= float(model["dropout"]) < 1.0:
+        raise FoodConfigurationError("config.model.dropout must be in [0, 1)")
+    for key in ("batch_size", "epochs"):
+        if not isinstance(training.get(key), int) or int(training[key]) < 1:
+            raise FoodConfigurationError(f"config.training.{key} must be a positive integer")
+    return model, training
+
+
+def run_food_training(config: Mapping[str, Any]) -> dict[str, Any]:
+    """Run a checksum-gated Food train/validation lifecycle from one YAML config."""
+
+    handoff = validate_food_data_handoff(config)
+    model_settings, training = _food_model_settings(config)
+    seed = config.get("seed")
+    if not isinstance(seed, int):
+        raise FoodConfigurationError("config.seed must be an integer")
+    _seed_food_training(seed)
+    device = str(training.get("device", "cpu"))
+    if device.startswith("cuda") and not torch.cuda.is_available():
+        raise FoodConfigurationError("CUDA was requested for Food training but is unavailable")
+    embedder, foundation_checkpoint_manifest = _load_verified_foundation(config, device=device)
+    data = _mapping(config.get("data"), label="config.data")
+    verify_foundation_checkpoint_binding(
+        data=data,
+        handoff=handoff,
+        foundation_checkpoint_manifest=foundation_checkpoint_manifest,
+    )
+    food_root = Path(_config_text(data, "opportunities_root", label="config.data"))
+    foundation_root = Path(_config_text(data, "foundation_root", label="config.data"))
+    vocabulary_path = Path(_config_text(data, "vocabulary_path", label="config.data"))
+    max_tokens = data.get("max_tokens")
+    if not isinstance(max_tokens, int) or max_tokens < 3:
+        raise FoodConfigurationError("config.data.max_tokens must be an integer >= 3")
+    training_splits: tuple[FoodSplit, FoodSplit] = ("train", "validation")
+    rows = {
+        split: load_green_sm_food_opportunities(food_root, split=split)
+        for split in training_splits
+    }
+    samples = {
+        split: resolve_green_sm_food_samples(
+            rows[split], foundation_root=foundation_root, vocabulary_path=vocabulary_path,
+            split=split, max_tokens=max_tokens,
+        )
+        for split in training_splits
+    }
+    features = FoodFeatureArtifacts.fit(rows["train"])
+    batch_size = int(training["batch_size"])
+    item_buckets = int(model_settings["item_hash_buckets"])
+    merchant_buckets = int(model_settings["merchant_hash_buckets"])
+    train_batches = build_food_batches(
+        rows["train"], encoded_samples_by_id=samples["train"], feature_artifacts=features,
+        batch_size=batch_size, item_hash_buckets=item_buckets, merchant_hash_buckets=merchant_buckets,
+        require_labels=True,
+    )
+    validation_batches = build_food_batches(
+        rows["validation"], encoded_samples_by_id=samples["validation"], feature_artifacts=features,
+        batch_size=batch_size, item_hash_buckets=item_buckets, merchant_hash_buckets=merchant_buckets,
+        require_labels=True,
+    )
+    ranker = FoodRanker(
+        d_model=int(embedder.model.config.d_model), item_hash_buckets=item_buckets,
+        merchant_hash_buckets=merchant_buckets, num_categories=len(features.category_vocabulary),
+        num_geo_cells=len(features.geo_cell_vocabulary), dropout=float(model_settings["dropout"]),
+    )
+    ranker_config = _mapping(config.get("ranker"), label="config.ranker")
+    run_dir = Path(_config_text(ranker_config, "run_dir", label="config.ranker"))
+    metadata = {
+        **handoff,
+        "run_id": run_dir.name,
+        "seed": seed,
+        "config_digest": _config_digest(config),
+        "selected_checkpoint_sha256": _config_text(config["checkpoint"], "expected_sha256", label="config.checkpoint"),
+        "vocabulary_sha256": _sha256(vocabulary_path),
+        "foundation_checkpoint_identity": foundation_checkpoint_manifest,
+        "train_request_count": len(_group_requests(rows["train"])),
+        "validation_request_count": len(_group_requests(rows["validation"])),
+    }
+    return train_food_ranker(
+        embedder=embedder, ranker=ranker, train_batches=train_batches, validation_batches=validation_batches,
+        feature_artifacts=features, run_dir=run_dir, epochs=int(training["epochs"]),
+        learning_rate=float(training["learning_rate"]), weight_decay=float(training["weight_decay"]),
+        device=device, run_metadata=metadata,
+    )
+
+
+def _load_food_ranker(run_dir: str | Path, *, expected_manifest_sha256: str | None, device: str | torch.device) -> tuple[FoodRanker, FoodFeatureArtifacts, dict[str, Any]]:
+    directory = Path(run_dir)
+    manifest_path = directory / "run_manifest.json"
+    if expected_manifest_sha256 is not None:
+        _verify_sha256(manifest_path, expected_manifest_sha256, label="Food run manifest")
+    manifest = _read_json(manifest_path, label="Food run manifest")
+    if manifest.get("schema_version") != "green_sm_food_ranker_v1":
+        raise FoodConfigurationError("Food run manifest has unsupported schema_version")
+    checkpoint_path = directory / str(manifest.get("best_checkpoint"))
+    _verify_sha256(checkpoint_path, str(manifest.get("best_checkpoint_sha256")), label="Food best checkpoint")
+    feature_path = directory / str(manifest.get("feature_artifacts"))
+    _verify_sha256(feature_path, str(manifest.get("feature_artifacts_sha256")), label="Food feature artifacts")
+    ranker_config = _mapping(manifest.get("ranker_config"), label="Food run manifest ranker_config")
+    ranker = FoodRanker(**dict(ranker_config))
+    payload = torch.load(checkpoint_path, map_location=device, weights_only=False)
+    ranker.load_state_dict(payload["ranker_state_dict"])
+    ranker.to(device).eval()
+    return ranker, FoodFeatureArtifacts.load(feature_path), manifest
+
+
+def verify_food_prediction_identity(
+    *,
+    food_run_manifest: Mapping[str, Any],
+    handoff: Mapping[str, Any],
+    expected_foundation_checkpoint_sha: str,
+) -> None:
+    """Reject a Food ranker trained from a different immutable handoff."""
+
+    if food_run_manifest.get("selected_checkpoint_sha256") != expected_foundation_checkpoint_sha:
+        raise FoodConfigurationError(
+            "Food run was trained with a different Foundation checkpoint than this config"
+        )
+    for field, label in (
+        ("food_manifest_sha256", "Food manifest"),
+        ("foundation_manifest_sha256", "Foundation manifest"),
+    ):
+        if food_run_manifest.get(field) != handoff.get(field):
+            raise FoodConfigurationError(f"Food run was trained with a different {label}")
+
+
+def export_food_predictions(
+    *,
+    embedder: Any,
+    ranker: FoodRanker,
+    batches: Sequence[FoodBatch],
+    rows: Sequence[FoodOpportunity],
+    split: Literal["validation", "test"],
+    output_dir: str | Path,
+    device: str | torch.device,
+    data_version: str,
+    source_checksums: Mapping[str, str],
+    run_metadata: Mapping[str, Any],
+) -> OutputPaths:
+    """Score an exact Food candidate universe and export label-free predictions."""
+
+    if not batches:
+        raise ValueError("Food prediction requires at least one batch")
+    destination = Path(output_dir)
+    if destination.exists() and any(destination.iterdir()):
+        raise ValueError(f"Food prediction directory must be new and empty: {destination}")
+    resolved_device = torch.device(device)
+    embedder.to(resolved_device)
+    embedder.eval()
+    ranker.to(resolved_device)
+    ranker.eval()
+    predictions: list[PredictionRow] = []
+    with torch.no_grad():
+        for batch in batches:
+            moved = _to_device_food_batch(batch, resolved_device)
+            scores = frozen_foundation_food_logits(embedder, ranker, moved)
+            predictions.extend(food_prediction_rows_from_batch(moved, scores.cpu(), split=split))
+    return OutputContractV1.write_predictions(
+        predictions,
+        expected_candidates=expected_food_candidates(
+            rows, data_version=data_version, source_checksums=source_checksums
+        ),
+        output_dir=destination,
+        split=split,
+        run_metadata=run_metadata,
+    )
+
+
+def run_food_prediction(
+    config: Mapping[str, Any], *, split: Literal["validation", "test"]
+) -> OutputPaths:
+    """Load verified Food/Foundation artifacts and export one immutable split."""
+
+    handoff = validate_food_data_handoff(config)
+    model_settings, training = _food_model_settings(config)
+    seed = config.get("seed")
+    if not isinstance(seed, int):
+        raise FoodConfigurationError("config.seed must be an integer")
+    device = str(training.get("device", "cpu"))
+    if device.startswith("cuda") and not torch.cuda.is_available():
+        raise FoodConfigurationError("CUDA was requested for Food prediction but is unavailable")
+    embedder, foundation_checkpoint_manifest = _load_verified_foundation(config, device=device)
+    data = _mapping(config.get("data"), label="config.data")
+    verify_foundation_checkpoint_binding(
+        data=data,
+        handoff=handoff,
+        foundation_checkpoint_manifest=foundation_checkpoint_manifest,
+    )
+    ranker_settings = _mapping(config.get("ranker"), label="config.ranker")
+    run_dir = Path(_config_text(ranker_settings, "run_dir", label="config.ranker"))
+    expected_run_manifest_sha256 = _config_text(
+        ranker_settings, "expected_run_manifest_sha256", label="config.ranker"
+    )
+    ranker, features, food_run_manifest = _load_food_ranker(
+        run_dir,
+        expected_manifest_sha256=expected_run_manifest_sha256,
+        device=device,
+    )
+    expected_foundation_checkpoint_sha = _config_text(
+        _mapping(config.get("checkpoint"), label="config.checkpoint"),
+        "expected_sha256",
+        label="config.checkpoint",
+    )
+    verify_food_prediction_identity(
+        food_run_manifest=food_run_manifest,
+        handoff=handoff,
+        expected_foundation_checkpoint_sha=expected_foundation_checkpoint_sha,
+    )
+    if ranker.config != {
+        "d_model": int(embedder.model.config.d_model),
+        "item_hash_buckets": int(model_settings["item_hash_buckets"]),
+        "merchant_hash_buckets": int(model_settings["merchant_hash_buckets"]),
+        "num_categories": len(features.category_vocabulary),
+        "num_geo_cells": len(features.geo_cell_vocabulary),
+        "dropout": float(model_settings["dropout"]),
+    }:
+        raise FoodConfigurationError("Food model config does not match the checksum-bound Food run")
+    food_root = Path(_config_text(data, "opportunities_root", label="config.data"))
+    foundation_root = Path(_config_text(data, "foundation_root", label="config.data"))
+    vocabulary_path = Path(_config_text(data, "vocabulary_path", label="config.data"))
+    max_tokens = data.get("max_tokens")
+    if not isinstance(max_tokens, int) or max_tokens < 3:
+        raise FoodConfigurationError("config.data.max_tokens must be an integer >= 3")
+    rows = load_green_sm_food_opportunities(food_root, split=split)
+    samples = resolve_green_sm_food_samples(
+        rows,
+        foundation_root=foundation_root,
+        vocabulary_path=vocabulary_path,
+        split=split,
+        max_tokens=max_tokens,
+    )
+    batches = build_food_batches(
+        rows,
+        encoded_samples_by_id=samples,
+        feature_artifacts=features,
+        batch_size=int(training["batch_size"]),
+        item_hash_buckets=int(model_settings["item_hash_buckets"]),
+        merchant_hash_buckets=int(model_settings["merchant_hash_buckets"]),
+        require_labels=split == "validation",
+    )
+    return export_food_predictions(
+        embedder=embedder,
+        ranker=ranker,
+        batches=batches,
+        rows=rows,
+        split=split,
+        output_dir=run_dir / "predictions" / split,
+        device=device,
+        data_version=handoff["data_version"],
+        source_checksums={
+            "food_manifest_sha256": handoff["food_manifest_sha256"],
+            "foundation_manifest_sha256": handoff["foundation_manifest_sha256"],
+        },
+        run_metadata={
+            "selected_checkpoint_sha256": expected_foundation_checkpoint_sha,
+            "vocabulary_sha256": _sha256(vocabulary_path),
+            "foundation_manifest_sha256": handoff["foundation_manifest_sha256"],
+            "food_manifest_sha256": handoff["food_manifest_sha256"],
+            "config_digest": str(food_run_manifest["config_digest"]),
+            "seed": seed,
+            "run_id": str(food_run_manifest["run_id"]),
+            "score_semantics": "ranking",
+        },
     )
 
 

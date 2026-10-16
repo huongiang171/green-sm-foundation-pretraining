@@ -469,3 +469,236 @@ def test_food_cli_validate_data_checks_checksum_bound_handoff(
 
     assert food.main(["--config", "fixture.yaml", "--mode", "validate"]) == 0
     assert '"status": "data_handoff_valid"' in capsys.readouterr().out
+
+
+def test_food_cli_runs_training_and_test_export(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    import src.downstream.food_recommendation as food
+
+    config = {"task": "food_recommendation"}
+    monkeypatch.setattr(food, "load_food_recommendation_config", lambda _path: config)
+    monkeypatch.setattr(food, "validate_food_data_handoff", lambda _config: {"data_version": "pilot"})
+    monkeypatch.setattr(
+        food, "run_food_training", lambda _config: {"run_dir": "artifacts/food/run-1", "best_epoch": 2}
+    )
+    monkeypatch.setattr(
+        food,
+        "run_food_prediction",
+        lambda _config, *, split: SimpleNamespace(predictions=Path(f"predictions.{split}.parquet")),
+    )
+
+    assert food.main(["--config", "fixture.yaml", "--mode", "train"]) == 0
+    assert '"status": "food_training_complete"' in capsys.readouterr().out
+    assert food.main(["--config", "fixture.yaml", "--mode", "predict", "--split", "test"]) == 0
+    assert '"status": "food_prediction_exported"' in capsys.readouterr().out
+
+
+def test_food_train_runner_freezes_foundation_and_writes_reloadable_artifacts(
+    tmp_path: Path,
+) -> None:
+    from src.downstream.food_recommendation import (
+        FoodFeatureArtifacts,
+        FoodRanker,
+        build_food_batches,
+        train_food_ranker,
+    )
+
+    rows = _train_rows()
+    batches = build_food_batches(
+        rows,
+        encoded_samples_by_id=_encoded_samples_by_id(),
+        feature_artifacts=FoodFeatureArtifacts.fit(rows),
+        batch_size=1,
+        item_hash_buckets=11,
+        merchant_hash_buckets=13,
+        require_labels=True,
+    )
+    ranker = FoodRanker(
+        d_model=4,
+        item_hash_buckets=11,
+        merchant_hash_buckets=13,
+        num_categories=3,
+        num_geo_cells=3,
+        dropout=0.0,
+    )
+    embedder = _StubFoundation()
+
+    report = train_food_ranker(
+        embedder=embedder,
+        ranker=ranker,
+        train_batches=batches,
+        validation_batches=batches,
+        feature_artifacts=FoodFeatureArtifacts.fit(rows),
+        run_dir=tmp_path / "food-run",
+        epochs=2,
+        learning_rate=1e-3,
+        weight_decay=0.0,
+        device="cpu",
+        run_metadata={"run_id": "food-unit", "selected_checkpoint_sha256": "foundation"},
+    )
+
+    assert report["best_validation_loss"] >= 0.0
+    assert (tmp_path / "food-run" / "feature_artifacts.json").is_file()
+    assert (tmp_path / "food-run" / "best.pt").is_file()
+    assert (tmp_path / "food-run" / "last.pt").is_file()
+    assert (tmp_path / "food-run" / "run_manifest.json").is_file()
+    assert all(parameter.grad is None for parameter in embedder.parameters())
+
+
+def test_food_ranker_loader_verifies_and_restores_best_checkpoint(tmp_path: Path) -> None:
+    from src.downstream.food_recommendation import (
+        FoodFeatureArtifacts,
+        FoodRanker,
+        _load_food_ranker,
+        _sha256,
+        build_food_batches,
+        train_food_ranker,
+    )
+
+    rows = _train_rows()
+    features = FoodFeatureArtifacts.fit(rows)
+    batches = build_food_batches(
+        rows,
+        encoded_samples_by_id=_encoded_samples_by_id(),
+        feature_artifacts=features,
+        batch_size=1,
+        item_hash_buckets=11,
+        merchant_hash_buckets=13,
+        require_labels=True,
+    )
+    run_dir = tmp_path / "food-run"
+    train_food_ranker(
+        embedder=_StubFoundation(),
+        ranker=FoodRanker(
+            d_model=4,
+            item_hash_buckets=11,
+            merchant_hash_buckets=13,
+            num_categories=3,
+            num_geo_cells=3,
+            dropout=0.0,
+        ),
+        train_batches=batches,
+        validation_batches=batches,
+        feature_artifacts=features,
+        run_dir=run_dir,
+        epochs=1,
+        learning_rate=1e-3,
+        weight_decay=0.0,
+        device="cpu",
+        run_metadata={"run_id": "food-unit", "selected_checkpoint_sha256": "foundation"},
+    )
+
+    loaded, loaded_features, manifest = _load_food_ranker(
+        run_dir,
+        expected_manifest_sha256=_sha256(run_dir / "run_manifest.json"),
+        device="cpu",
+    )
+
+    assert loaded.config["d_model"] == 4
+    assert loaded_features.category_vocabulary == features.category_vocabulary
+    assert manifest["best_checkpoint"] == "best.pt"
+
+
+def test_food_prediction_identity_rejects_mismatched_data_or_foundation() -> None:
+    from src.downstream.food_recommendation import (
+        FoodConfigurationError,
+        verify_food_prediction_identity,
+    )
+
+    with pytest.raises(FoodConfigurationError, match="different Food manifest"):
+        verify_food_prediction_identity(
+            food_run_manifest={
+                "selected_checkpoint_sha256": "checkpoint-a",
+                "food_manifest_sha256": "food-a",
+                "foundation_manifest_sha256": "foundation-a",
+            },
+            handoff={
+                "food_manifest_sha256": "food-b",
+                "foundation_manifest_sha256": "foundation-a",
+            },
+            expected_foundation_checkpoint_sha="checkpoint-a",
+        )
+
+
+def test_food_checkpoint_binding_rejects_another_foundation_corpus() -> None:
+    from src.downstream.food_recommendation import (
+        FoodConfigurationError,
+        verify_foundation_checkpoint_binding,
+    )
+
+    with pytest.raises(FoodConfigurationError, match="not bound"):
+        verify_foundation_checkpoint_binding(
+            data={"foundation_corpus": "linked"},
+            handoff={"foundation_manifest_sha256": "linked-foundation"},
+            foundation_checkpoint_manifest={"linked_manifest_sha256": "other-foundation"},
+        )
+
+
+def test_food_prediction_runner_exports_all_test_candidates_without_labels(
+    tmp_path: Path,
+) -> None:
+    from src.downstream.food_recommendation import (
+        FoodFeatureArtifacts,
+        FoodRanker,
+        build_food_batches,
+        export_food_predictions,
+    )
+
+    train_rows = _train_rows()
+    test_rows = [
+        _food_opportunity(
+            split="test", candidate_id="test-candidate-1", item_id="test-candidate-1",
+            is_positive=None,
+        ),
+        _food_opportunity(
+            split="test", candidate_id="test-candidate-2", item_id="test-candidate-2",
+            is_positive=None,
+        ),
+    ]
+    features = FoodFeatureArtifacts.fit(train_rows)
+    batches = build_food_batches(
+        test_rows,
+        encoded_samples_by_id=_encoded_samples_by_id(),
+        feature_artifacts=features,
+        batch_size=1,
+        item_hash_buckets=11,
+        merchant_hash_buckets=13,
+        require_labels=False,
+    )
+
+    paths = export_food_predictions(
+        embedder=_StubFoundation(),
+        ranker=FoodRanker(
+            d_model=4,
+            item_hash_buckets=11,
+            merchant_hash_buckets=13,
+            num_categories=3,
+            num_geo_cells=3,
+            dropout=0.0,
+        ),
+        batches=batches,
+        rows=test_rows,
+        split="test",
+        output_dir=tmp_path / "food-run" / "predictions" / "test",
+        device="cpu",
+        data_version="food-unit-v1",
+        source_checksums={"food_manifest_sha256": "food", "foundation_manifest_sha256": "foundation"},
+        run_metadata={
+            "selected_checkpoint_sha256": "foundation-checkpoint",
+            "vocabulary_sha256": "vocabulary",
+            "foundation_manifest_sha256": "foundation",
+            "food_manifest_sha256": "food",
+            "config_digest": "config",
+            "seed": 42,
+            "run_id": "food-unit",
+            "score_semantics": "ranking",
+        },
+    )
+
+    exported = pq.read_table(paths.predictions).to_pylist()
+    assert {(row["request_id"], row["candidate_id"]) for row in exported} == {
+        ("request-1", "test-candidate-1"),
+        ("request-1", "test-candidate-2"),
+    }
+    assert "is_positive" not in exported[0]
