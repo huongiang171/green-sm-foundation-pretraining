@@ -5,6 +5,7 @@ from __future__ import annotations
 import bisect
 import hashlib
 import json
+import re
 from collections import Counter, defaultdict
 from datetime import datetime, timedelta
 from pathlib import Path
@@ -19,7 +20,22 @@ from .world import SIMULATION_START, LogicalRequest, SimulatedUser, TargetWorld,
 
 
 SCHEMA_VERSION = "omnibehavior_pretraining_v2"
-ROOT_NAMES = {"linked": "green_sm_sim_linked_v1", "paired_control": "green_sm_sim_control_paired_v1"}
+_DATA_VERSION = re.compile(r"^green_sm_sim_(?:pilot|full)_v(?P<version>[1-9][0-9]*)$")
+
+
+def root_names(data_version: str) -> dict[str, str]:
+    """Derive immutable paired root names from the declared corpus version."""
+
+    matched = _DATA_VERSION.fullmatch(data_version)
+    if matched is None:
+        raise ValueError(
+            "data_version must be green_sm_sim_pilot_vN or green_sm_sim_full_vN"
+        )
+    version = matched.group("version")
+    return {
+        "linked": f"green_sm_sim_linked_v{version}",
+        "paired_control": f"green_sm_sim_control_paired_v{version}",
+    }
 
 
 def _sha256(path: Path) -> str:
@@ -192,6 +208,41 @@ def _split_for_cutoff(cutoff: datetime) -> str:
 
 
 def _foundation_config(config: GreenSmConfig, world: TargetWorld, view_name: str) -> dict[str, object]:
+    geo_catalogue = {
+        cell.cell_id: {"lat": cell.lat, "lon": cell.lon}
+        for cell in world.catalogue.cells
+    }
+    geo_catalogue_fingerprint = hashlib.sha256(
+        _json(geo_catalogue).encode("utf-8")
+    ).hexdigest()
+    geo_fields = [
+        "profile.home_location",
+        "profile.work_location",
+        "context.pickup_location",
+        "context.dropoff_location",
+        "context.merchant_location",
+        "context.delivery_location",
+        "context.ad_context_location",
+    ]
+    tokenizer_contract = {
+        "profile_allowlist": [
+            "home_location",
+            "work_location",
+            "budget_bucket",
+            "preferred_service",
+            "active_days_so_far",
+        ],
+        "context_allowlist": {
+            "Ride": ["pickup_location", "dropoff_location"],
+            "Food": ["merchant_location", "food_category"],
+            "Delivery": ["delivery_location", "delivery_category"],
+            "Ads": ["ad_context_location", "placement"],
+        },
+        "geo_field_registry": geo_fields,
+        "geo_catalogue": geo_catalogue,
+        "geo_catalogue_fingerprint": geo_catalogue_fingerprint,
+        "coordinate_tolerance": 1e-6,
+    }
     return {
         "schema_version": SCHEMA_VERSION,
         "foundation_batch_contract_version": 3,
@@ -202,15 +253,9 @@ def _foundation_config(config: GreenSmConfig, world: TargetWorld, view_name: str
         "target_world_fingerprint": world.fingerprint(),
         "max_history_events": config.max_history_events,
         "max_tokens": config.max_tokens,
-        "geo_field_registry": [
-            "profile.home_location",
-            "profile.work_location",
-            "context.pickup_location",
-            "context.dropoff_location",
-            "context.merchant_location",
-            "context.delivery_location",
-            "context.ad_context_location",
-        ],
+        "geo_field_registry": geo_fields,
+        "geo_catalogue_fingerprint": geo_catalogue_fingerprint,
+        "tokenizer_contract": tokenizer_contract,
         "splits": {
             "start_inclusive": SIMULATION_START.isoformat(),
             "train_end_exclusive": (SIMULATION_START + timedelta(days=28)).isoformat(),
@@ -365,8 +410,9 @@ def build_dataset(config: GreenSmConfig) -> dict[str, object]:
     ads_rows = _opportunity_rows(world.ads_requests, sample_for_request, task="ads")
     roots: dict[str, str] = {}
     max_tokens = 0
+    names = root_names(config.data_version)
     for name, view in (("linked", linked), ("paired_control", control)):
-        root = config.output_root / ROOT_NAMES[name]
+        root = config.output_root / names[name]
         foundation_root, maximum = _write_foundation(config, world, view, root / "foundation", specs)
         max_tokens = max(max_tokens, maximum)
         manifest_sha256 = _sha256(foundation_root / "manifest.json")

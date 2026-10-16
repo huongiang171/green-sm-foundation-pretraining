@@ -16,9 +16,7 @@ import pyarrow.parquet as pq
 
 from src.foundation_input.loader import iter_normalized_samples
 from src.foundation_input.manifest import DatasetManifest, load_manifest
-from src.foundation_input.types import FoundationBatch
-
-from .build import ROOT_NAMES
+from .build import root_names
 from .config import GreenSmConfig
 from .world import TargetWorld, build_target_world
 
@@ -36,7 +34,7 @@ def _json(value: object) -> str:
 
 
 def _root_paths(config: GreenSmConfig) -> dict[str, Path]:
-    return {name: config.output_root / dirname for name, dirname in ROOT_NAMES.items()}
+    return {name: config.output_root / dirname for name, dirname in root_names(config.data_version).items()}
 
 
 def _event_rows(manifest: DatasetManifest) -> list[dict[str, Any]]:
@@ -256,6 +254,13 @@ def _assert_control_audit(root: Path) -> dict[str, float]:
 def _validate_root(config: GreenSmConfig, world: TargetWorld, root: Path) -> dict[str, object]:
     foundation_root = root / "foundation"
     manifest = load_manifest(foundation_root, verify_checksums=True)
+    preprocessing_path = foundation_root / "preprocessing_config.json"
+    preprocessing = json.loads(preprocessing_path.read_text(encoding="utf-8"))
+    if preprocessing.get("foundation_batch_contract_version") != 3:
+        raise ValueError("Foundation preprocessing config must declare data contract version 3")
+    geo_catalogue_fingerprint = preprocessing.get("geo_catalogue_fingerprint")
+    if not isinstance(geo_catalogue_fingerprint, str) or not geo_catalogue_fingerprint:
+        raise ValueError("Foundation preprocessing config lacks geo catalogue fingerprint")
     samples = {
         split: list(iter_normalized_samples(foundation_root, split))
         for split in ("train", "validation", "test")
@@ -303,7 +308,9 @@ def _validate_root(config: GreenSmConfig, world: TargetWorld, root: Path) -> dic
         "closed_vocab_oov_rate": oov_rate,
         "cold_start_test_user_rate": cold_rate,
         "foundation_manifest_sha256": _sha256(foundation_root / "manifest.json"),
-        "upstream_v3_geo_contract_ready": "geo_values" in FoundationBatch.__dataclass_fields__,
+        "preprocessing_config_sha256": _sha256(preprocessing_path),
+        "data_geo_contract_version": 3,
+        "geo_catalogue_fingerprint": geo_catalogue_fingerprint,
     }
 
 

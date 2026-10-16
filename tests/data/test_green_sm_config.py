@@ -70,13 +70,14 @@ def test_config_rejects_invalid_pilot_fraction_and_split_total(tmp_path: Path) -
         )
 
 
-def test_config_refuses_an_existing_nonempty_output_root(tmp_path: Path) -> None:
+def test_config_parses_an_existing_nonempty_output_root_without_authorizing_overwrite(tmp_path: Path) -> None:
     output = tmp_path / "occupied"
     output.mkdir()
     (output / "existing.txt").write_text("do not overwrite", encoding="utf-8")
 
-    with pytest.raises(ValueError, match="non-empty output root"):
-        GreenSmConfig.from_json(_write_pilot_config(tmp_path, output_root=str(output)))
+    config = GreenSmConfig.from_json(_write_pilot_config(tmp_path, output_root=str(output)))
+
+    assert config.output_root == output
 
 
 def test_config_digest_changes_when_a_readiness_threshold_changes(tmp_path: Path) -> None:

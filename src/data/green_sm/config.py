@@ -197,8 +197,6 @@ class GreenSmConfig:
         if total_days != TOTAL_DAYS or sum(split_days.values()) != total_days:
             raise ValueError("split_days must sum to the 42 simulated days")
         output_root = Path(str(payload["output_root"]))
-        if output_root.exists() and any(output_root.iterdir()):
-            raise ValueError(f"refusing to overwrite non-empty output root: {output_root}")
         user_count = int(payload["user_count"])
         max_history_events = int(payload["max_history_events"])
         max_tokens = int(payload["max_tokens"])

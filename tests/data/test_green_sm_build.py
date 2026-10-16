@@ -67,3 +67,26 @@ def test_pilot_cli_builds_and_writes_readiness_report(tmp_path: Path) -> None:
     assert completed.returncode == 0, completed.stderr
     report = tmp_path / "out" / "green_sm_sim_linked_v1" / "reports" / "data_quality_report.json"
     assert json.loads(report.read_text(encoding="utf-8"))["readiness_passed"] is True
+
+
+def test_preprocessing_contract_publishes_geo_catalogue_and_green_sm_allowlists(tmp_path: Path) -> None:
+    result = build_dataset(_pilot_config(tmp_path))
+    preprocessing = json.loads(
+        (Path(result["foundation_roots"]["linked"]) / "preprocessing_config.json").read_text(
+            encoding="utf-8"
+        )
+    )
+
+    contract = preprocessing["tokenizer_contract"]
+    assert contract["profile_allowlist"] == [
+        "home_location",
+        "work_location",
+        "budget_bucket",
+        "preferred_service",
+        "active_days_so_far",
+    ]
+    assert contract["context_allowlist"]["Ride"] == ["pickup_location", "dropoff_location"]
+    assert contract["context_allowlist"]["Food"] == ["merchant_location", "food_category"]
+    assert contract["coordinate_tolerance"] == pytest.approx(1e-6)
+    assert len(contract["geo_catalogue"]) == 64
+    assert set(contract["geo_catalogue"]["cell_00"]) == {"lat", "lon"}

@@ -57,7 +57,8 @@ def test_validator_writes_complete_report_and_rejects_control_label_marker(tmp_p
 
     assert report["roots"]["linked"]["readiness_passed"] is True
     assert report["roots"]["paired_control"]["readiness_passed"] is True
-    assert report["roots"]["linked"]["upstream_v3_geo_contract_ready"] is False
+    assert report["roots"]["linked"]["data_geo_contract_version"] == 3
+    assert isinstance(report["roots"]["linked"]["geo_catalogue_fingerprint"], str)
     _inject_control_only_label_marker(config)
     with pytest.raises(ValueError, match="paired-control conditional independence"):
         validate_outputs(config)
