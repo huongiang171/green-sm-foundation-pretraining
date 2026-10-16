@@ -67,8 +67,6 @@ def test_train_one_step_updates_foundation_parameters(monkeypatch) -> None:
 def test_train_one_step_rejects_current_v2_collation(monkeypatch) -> None:
     """Removing the v3 batch gate must let the known incomplete collator train silently."""
     from src.pretraining import runner
-    from src.foundation_input.types import FoundationBatch
-
     state = runner.make_training_state(
         d_model=8,
         num_heads=2,
@@ -87,7 +85,7 @@ def test_train_one_step_rejects_current_v2_collation(monkeypatch) -> None:
         weight_decay=0.0,
         objective_weights=ObjectiveWeights(1.0, 1.0, 1.0, 1.0, 1.0, 1.0),
     )
-    v2 = FoundationBatch(
+    v2 = SimpleNamespace(
         input_ids=torch.tensor([[1, 2]], dtype=torch.long), key_ids=torch.zeros((1, 2), dtype=torch.long),
         modality_ids=torch.zeros((1, 2), dtype=torch.long), source_ids=torch.zeros((1, 2), dtype=torch.long),
         position_ids=torch.zeros((1, 2), dtype=torch.long), time_gap_ids=torch.zeros((1, 2), dtype=torch.long),

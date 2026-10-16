@@ -93,7 +93,6 @@ def preflight_green_sm(config: PretrainingConfig) -> PreflightResult:
 def validate_v3_batch_contract(batch: FoundationBatch, routing: RoutingIds) -> None:
     """Reject missing or malformed v3 tensors before they enter a model."""
 
-    del routing  # Routing is validated by the caller from the persisted vocabulary.
     if not hasattr(batch, "geo_values") or not hasattr(batch, "geo_missing_mask"):
         raise RuntimeError(
             "FoundationBatch requires geo_values and geo_missing_mask under the v3 contract"
@@ -113,3 +112,11 @@ def validate_v3_batch_contract(batch: FoundationBatch, routing: RoutingIds) -> N
         )
     if not torch.isfinite(batch.geo_values).all():
         raise ValueError("geo_values must be finite")
+    if batch.modality_ids.shape != batch.input_ids.shape or batch.modality_ids.dtype != torch.long:
+        raise ValueError("modality_ids must be torch.long with shape [B, L]")
+    is_geo = batch.modality_ids.eq(routing.geo)
+    if torch.any(batch.geo_missing_mask & ~is_geo):
+        raise ValueError("geo_missing_mask may be true only for geo tokens")
+    non_geo_values = batch.geo_values.masked_select((~is_geo).unsqueeze(-1)).reshape(-1)
+    if non_geo_values.numel() and torch.any(non_geo_values.ne(0.0)):
+        raise ValueError("geo_values must be zero at non-geo positions")

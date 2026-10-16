@@ -18,6 +18,8 @@ def _three_modality_batch() -> FoundationBatch:
         attention_mask=torch.ones((1, 5), dtype=torch.bool),
         numeric_values=torch.zeros((1, 5), dtype=torch.float32),
         numeric_missing_mask=torch.zeros((1, 5), dtype=torch.bool),
+        geo_values=torch.zeros((1, 5, 2), dtype=torch.float32),
+        geo_missing_mask=torch.zeros((1, 5), dtype=torch.bool),
         user_ids=torch.tensor([1], dtype=torch.long),
         targets={},
     )
@@ -34,6 +36,8 @@ def _numeric_batch(value: float, missing: bool) -> FoundationBatch:
         attention_mask=torch.ones((1, 4), dtype=torch.bool),
         numeric_values=torch.tensor([[0.0, value, 777.0, 0.0]], dtype=torch.float32),
         numeric_missing_mask=torch.tensor([[False, missing, False, False]], dtype=torch.bool),
+        geo_values=torch.zeros((1, 4, 2), dtype=torch.float32),
+        geo_missing_mask=torch.zeros((1, 4), dtype=torch.bool),
         user_ids=torch.tensor([1], dtype=torch.long),
         targets={},
     )

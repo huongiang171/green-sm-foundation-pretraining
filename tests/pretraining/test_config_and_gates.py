@@ -105,7 +105,7 @@ def _write_config(tmp_path: Path, **overrides: object) -> Path:
 
 
 def _v2_batch() -> FoundationBatch:
-    return FoundationBatch(
+    return SimpleNamespace(
         input_ids=torch.tensor([[1, 2]], dtype=torch.long),
         key_ids=torch.zeros((1, 2), dtype=torch.long),
         modality_ids=torch.zeros((1, 2), dtype=torch.long),
@@ -160,8 +160,25 @@ def test_v3_contract_accepts_aligned_geo_tensors() -> None:
 
     batch = SimpleNamespace(
         input_ids=torch.tensor([[1, 5]], dtype=torch.long),
+        modality_ids=torch.tensor([[0, 3]], dtype=torch.long),
         geo_values=torch.zeros((1, 2, 2), dtype=torch.float32),
         geo_missing_mask=torch.zeros((1, 2), dtype=torch.bool),
     )
 
     validate_v3_batch_contract(batch, RoutingIds(sequence=1, numeric=2, geo=3))
+
+
+def test_v3_contract_rejects_geo_missing_flag_on_non_geo_position() -> None:
+    """A padding/categorical token must not masquerade as a missing geo token."""
+    from src.pretraining.config import RoutingIds
+    from src.pretraining.gates import validate_v3_batch_contract
+
+    batch = SimpleNamespace(
+        input_ids=torch.tensor([[1, 5]], dtype=torch.long),
+        modality_ids=torch.tensor([[0, 1]], dtype=torch.long),
+        geo_values=torch.zeros((1, 2, 2), dtype=torch.float32),
+        geo_missing_mask=torch.tensor([[False, True]], dtype=torch.bool),
+    )
+
+    with pytest.raises(ValueError, match="geo_missing_mask"):
+        validate_v3_batch_contract(batch, RoutingIds(sequence=1, numeric=2, geo=3))

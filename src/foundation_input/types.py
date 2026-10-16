@@ -112,5 +112,7 @@ class FoundationBatch:
     attention_mask: torch.BoolTensor
     numeric_values: torch.FloatTensor
     numeric_missing_mask: torch.BoolTensor
+    geo_values: torch.FloatTensor
+    geo_missing_mask: torch.BoolTensor
     user_ids: torch.LongTensor
     targets: dict[str, torch.Tensor]

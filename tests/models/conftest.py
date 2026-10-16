@@ -30,6 +30,8 @@ def _batch_factory(*, two_tabular_tokens: bool = False) -> FoundationBatch:
         attention_mask=torch.tensor(attention_mask, dtype=torch.bool),
         numeric_values=torch.zeros((2, 7), dtype=torch.float32),
         numeric_missing_mask=torch.zeros((2, 7), dtype=torch.bool),
+        geo_values=torch.zeros((2, 7, 2), dtype=torch.float32),
+        geo_missing_mask=torch.zeros((2, 7), dtype=torch.bool),
         user_ids=torch.tensor([2**62 + 123, 5], dtype=torch.long),
         targets={},
     )

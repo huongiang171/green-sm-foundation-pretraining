@@ -193,6 +193,8 @@ def foundation_collate(
     rows: list[dict[str, list[int | bool]]] = []
     numeric_rows: list[list[float]] = []
     numeric_missing_rows: list[list[bool]] = []
+    geo_rows: list[list[list[float]]] = []
+    geo_missing_rows: list[list[bool]] = []
     next_action_type_ids: list[int] = []
     next_action_group_ids: list[int] = []
     next_action_valid_mask: list[bool] = []
@@ -224,6 +226,8 @@ def foundation_collate(
         group_ids = [0]
         numeric_values = [0.0]
         numeric_missing = [False]
+        geo_values = [[0.0, 0.0]]
+        geo_missing = [False]
         input_ids.extend(record.value_id for record in tabular)
         key_ids.extend(record.key_id for record in tabular)
         modality_ids.extend(record.modality_id for record in tabular)
@@ -233,6 +237,8 @@ def foundation_collate(
         group_ids.extend(0 for _ in tabular)
         numeric_values.extend(record.numeric_value for record in tabular)
         numeric_missing.extend(record.numeric_missing for record in tabular)
+        geo_values.extend([list(record.geo_value) for record in tabular])
+        geo_missing.extend(record.geo_missing for record in tabular)
         input_ids.append(2)
         key_ids.append(0)
         modality_ids.append(0)
@@ -242,6 +248,8 @@ def foundation_collate(
         group_ids.append(0)
         numeric_values.append(0.0)
         numeric_missing.append(False)
+        geo_values.append([0.0, 0.0])
+        geo_missing.append(False)
         for record in sequence:
             input_ids.append(record.value_id)
             key_ids.append(record.key_id)
@@ -254,6 +262,8 @@ def foundation_collate(
             )
             numeric_values.append(record.numeric_value)
             numeric_missing.append(record.numeric_missing)
+            geo_values.append(list(record.geo_value))
+            geo_missing.append(record.geo_missing)
         rows.append(
             {
                 "input_ids": input_ids,
@@ -267,6 +277,8 @@ def foundation_collate(
         )
         numeric_rows.append(numeric_values)
         numeric_missing_rows.append(numeric_missing)
+        geo_rows.append(geo_values)
+        geo_missing_rows.append(geo_missing)
         target_type = next(
             (
                 record.value_id
@@ -305,6 +317,12 @@ def foundation_collate(
     padded_numeric_missing = [
         row + [False] * (max_length - len(row)) for row in numeric_missing_rows
     ]
+    padded_geo = [
+        row + [[0.0, 0.0]] * (max_length - len(row)) for row in geo_rows
+    ]
+    padded_geo_missing = [
+        row + [False] * (max_length - len(row)) for row in geo_missing_rows
+    ]
     tensor = backend.tensor
     return FoundationBatch(
         input_ids=tensor(padded["input_ids"], dtype=backend.long),
@@ -316,6 +334,8 @@ def foundation_collate(
         attention_mask=tensor(padded["attention_mask"], dtype=backend.bool),
         numeric_values=tensor(padded_numeric, dtype=backend.float32),
         numeric_missing_mask=tensor(padded_numeric_missing, dtype=backend.bool),
+        geo_values=tensor(padded_geo, dtype=backend.float32),
+        geo_missing_mask=tensor(padded_geo_missing, dtype=backend.bool),
         user_ids=tensor(
             [
                 [

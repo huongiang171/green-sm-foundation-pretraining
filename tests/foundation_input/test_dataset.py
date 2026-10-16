@@ -38,12 +38,22 @@ class FakeTensorBackend:
         return np.asarray(values, dtype=dtype)
 
 
-def _record(value_id: int, *, source: str, group: str | None, position: int) -> TokenRecord:
+def _record(
+    value_id: int,
+    *,
+    source: str,
+    group: str | None,
+    position: int,
+    modality: str | None = None,
+    geo_value: tuple[float, float] = (0.0, 0.0),
+    geo_missing: bool = False,
+) -> TokenRecord:
+    resolved_modality = modality or ("numeric" if source == "tabular" else "categorical")
     return TokenRecord(
         token=KeyValueToken(
             key="profile.x" if source == "tabular" else "event_type",
             value=value_id,
-            modality="numeric" if source == "tabular" else "categorical",
+            modality=resolved_modality,
             source=source,
             timestamp=None,
             event_group_id=group,
@@ -54,6 +64,8 @@ def _record(value_id: int, *, source: str, group: str | None, position: int) -> 
         source_id=1 if source == "tabular" else 2,
         position_id=position,
         time_gap_id=position,
+        geo_value=geo_value,
+        geo_missing=geo_missing,
     )
 
 
@@ -135,6 +147,38 @@ def test_collator_keeps_tabular_before_sequence_tokens() -> None:
     batch = foundation_collate([sample], tensor_backend=FakeTensorBackend())
 
     assert batch.input_ids[0].tolist() == [1, 11, 12, 2, 21]
+
+
+def test_collator_aligns_geo_tensors_and_uses_missing_only_for_geo_tokens() -> None:
+    sample = EncodedSample(
+        sample_id="s1",
+        dataset_name="omnibehavior_v2",
+        user_id="u1",
+        records=(
+            _record(
+                11,
+                source="tabular",
+                group=None,
+                position=0,
+                modality="geo",
+                geo_value=(-1.0, 1.0),
+            ),
+            _record(
+                21,
+                source="sequence",
+                group="e1",
+                position=1,
+                modality="geo",
+                geo_missing=True,
+            ),
+        ),
+    )
+
+    batch = foundation_collate([sample], tensor_backend=FakeTensorBackend())
+
+    assert batch.geo_values.shape == (1, 4, 2)
+    assert batch.geo_values[0].tolist() == [[0.0, 0.0], [-1.0, 1.0], [0.0, 0.0], [0.0, 0.0]]
+    assert batch.geo_missing_mask[0].tolist() == [False, False, False, True]
 
 
 def test_foundation_dataset_streams_encoded_samples(tmp_path) -> None:
