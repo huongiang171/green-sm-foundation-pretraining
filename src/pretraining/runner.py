@@ -15,12 +15,16 @@ import torch
 
 from src.foundation_input.dataset import DatasetConfig, FoundationPretrainDataset, foundation_collate
 from src.foundation_input.loader import iter_normalized_samples
-from src.foundation_input.tokenizer import TokenizerConfig, semantic_tokens
-from src.foundation_input.vocab import VocabularyArtifacts, VocabularyConfig, fit_vocabulary
+from src.foundation_input.vocab import (
+    VocabularyArtifacts,
+    VocabularyConfig,
+    fit_vocabulary_from_samples,
+)
 from src.models.encoder import FoundationModel, FoundationModelConfig
 from src.models.objectives import LossBreakdown, PretrainingHeads, UserEmbeddingFusion, compute_pretraining_loss
 
 from .config import ObjectiveWeights, PretrainingConfig, RoutingIds
+from .green_sm_contract import load_green_sm_tokenizer_config
 from .gates import PreflightResult, validate_v3_batch_contract
 from .masking import corrupt_for_masked_reconstruction
 
@@ -91,12 +95,12 @@ def build_corpus_run_inputs(
         first = next(train_samples)
     except StopIteration as error:
         raise ValueError(f"{corpus} corpus has no train samples") from error
-    tokenizer = TokenizerConfig()
+    tokenizer = load_green_sm_tokenizer_config(root)
     samples = chain((first,), train_samples)
-    vocabulary = fit_vocabulary(
-        (token for sample in samples for token in semantic_tokens(sample, tokenizer)),
+    vocabulary = fit_vocabulary_from_samples(
+        samples,
         VocabularyConfig(dataset_name=first.dataset_name),
-        numeric_field_registry=tokenizer.numeric_fields,
+        tokenizer,
     )
     routing = _routing_from_vocab(vocabulary)
     model_config = _model_config(config, vocabulary, routing)

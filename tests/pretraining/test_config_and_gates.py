@@ -22,11 +22,28 @@ def _write_foundation_root(
     world_fingerprint: str = "same-world",
     readiness: bool = True,
     geo_contract_version: int = 3,
+    profile_field: str = "home_location",
 ) -> Path:
     root = parent / "foundation"
     root.mkdir(parents=True)
     config = root / "preprocessing_config.json"
-    config.write_text('{"schema_version":"omnibehavior_pretraining_v2"}\n', encoding="utf-8")
+    config.write_text(
+        json.dumps(
+            {
+                "schema_version": "omnibehavior_pretraining_v2",
+                "foundation_batch_contract_version": 3,
+                "tokenizer_contract": {
+                    "profile_allowlist": [profile_field],
+                    "context_allowlist": {"Food": ["merchant_location"]},
+                    "geo_field_registry": [f"profile.{profile_field}"],
+                    "geo_catalogue": {"cell_00": {"lat": 21.0, "lon": 105.0}},
+                    "geo_catalogue_fingerprint": "e02f9edfb6e81bf0dd61a77b5db5f5cafe9ddbf22b9423671939f236df0166d6",
+                    "coordinate_tolerance": 1e-6,
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
     manifest = {
         "status": "complete",
         "schema_version": "omnibehavior_pretraining_v2",
@@ -141,6 +158,20 @@ def test_preflight_rejects_paired_roots_with_different_target_world(tmp_path: Pa
     path.write_text(json.dumps(_config_payload(linked, control, tmp_path / "output")), encoding="utf-8")
 
     with pytest.raises(ValueError, match="target-world fingerprint"):
+        preflight_green_sm(load_pretraining_config(path))
+
+
+def test_preflight_rejects_paired_roots_with_different_tokenizer_contracts(tmp_path: Path) -> None:
+    """Paired comparisons must share their published tokenizer/geo policy exactly."""
+    from src.pretraining.config import load_pretraining_config
+    from src.pretraining.gates import preflight_green_sm
+
+    linked = _write_foundation_root(tmp_path / "linked", profile_field="home_location")
+    control = _write_foundation_root(tmp_path / "control", profile_field="work_location")
+    path = tmp_path / "config.json"
+    path.write_text(json.dumps(_config_payload(linked, control, tmp_path / "output")), encoding="utf-8")
+
+    with pytest.raises(ValueError, match="tokenizer contracts differ"):
         preflight_green_sm(load_pretraining_config(path))
 
 

@@ -16,6 +16,7 @@ from src.models.adapters import AdapterRegistry
 from src.models.encoder import FoundationModelConfig
 
 from .config import PretrainingConfig, RoutingIds
+from .green_sm_contract import load_green_sm_tokenizer_config
 
 
 def _sha256(path: Path) -> str:
@@ -66,6 +67,10 @@ def preflight_green_sm(config: PretrainingConfig) -> PreflightResult:
     control_sha = _sha256(control_manifest.root / "manifest.json")
     linked = _report(linked_manifest.root)
     control = _report(control_manifest.root)
+    linked_tokenizer = load_green_sm_tokenizer_config(linked_manifest.root)
+    control_tokenizer = load_green_sm_tokenizer_config(control_manifest.root)
+    if linked_tokenizer != control_tokenizer:
+        raise ValueError("linked/control tokenizer contracts differ")
     if linked["foundation_manifest_sha256"] != linked_sha:
         raise ValueError("linked readiness report has a different foundation manifest checksum")
     if control["foundation_manifest_sha256"] != control_sha:

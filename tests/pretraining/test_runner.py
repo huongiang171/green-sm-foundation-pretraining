@@ -1,10 +1,15 @@
 from __future__ import annotations
 
+from dataclasses import replace
 from types import SimpleNamespace
 
 import torch
 import pytest
 
+from src.data.green_sm.build import build_dataset, root_names
+from src.data.green_sm.config import GreenSmConfig
+from src.foundation_input.dataset import foundation_collate
+from src.models.encoder import FoundationModel
 from src.pretraining.config import ObjectiveWeights, RoutingIds
 
 
@@ -119,3 +124,60 @@ def test_train_one_step_uses_state_masking_probability(monkeypatch) -> None:
     assert losses.counts["categorical"] == 0
     assert losses.counts["numeric_value"] == 0
     assert losses.counts["geo_coordinate"] == 0
+
+
+def test_build_corpus_inputs_uses_declared_green_sm_geo_contract(tmp_path) -> None:
+    """The runner must fit and encode using the corpus's immutable tokenizer policy."""
+    from src.pretraining.config import (
+        DatasetSettings,
+        ModelSettings,
+        PretrainingConfig,
+        TrainingSettings,
+    )
+    from src.pretraining.gates import PreflightResult, validate_v3_batch_contract
+    from src.pretraining.runner import build_corpus_run_inputs
+
+    data_config = replace(
+        GreenSmConfig.from_json("configs/green_sm_sim_pilot.json"),
+        data_version="green_sm_sim_pilot_v2",
+        output_root=tmp_path / "green-sm-pilot-v2",
+    )
+    build_dataset(data_config)
+    names = root_names(data_config.data_version)
+    config = PretrainingConfig(
+        linked_root=data_config.output_root / names["linked"] / "foundation",
+        control_root=data_config.output_root / names["paired_control"] / "foundation",
+        output_dir=tmp_path / "artifacts",
+        seed=7,
+        model=ModelSettings(8, 2, 1, 0.0, 256, 17, 97),
+        dataset=DatasetSettings(256, 30),
+        training=TrainingSettings(2, 1, 1, 1, 0.001, 0.0, 8),
+        masking_probability=0.15,
+        objectives=ObjectiveWeights(1, 1, 1, 1, 1, 1),
+        config_digest="fixture-config",
+    )
+
+    inputs = build_corpus_run_inputs(
+        config,
+        PreflightResult("linked-manifest", "control-manifest", "generator", "world"),
+        corpus="linked",
+    )
+
+    assert inputs.vocabulary.modality_to_id["geo"] == inputs.model_config.geo_modality_id
+    assert inputs.vocabulary.geo_normalization is not None
+    assert inputs.vocabulary.tokenizer_contract["profile_allowlist"] == [
+        "active_days_so_far",
+        "budget_bucket",
+        "home_location",
+        "preferred_service",
+        "work_location",
+    ]
+    batch = foundation_collate([next(iter(inputs.train))])
+    validate_v3_batch_contract(batch, RoutingIds(
+        sequence=inputs.vocabulary.source_to_id["sequence"],
+        numeric=inputs.vocabulary.modality_to_id["numeric"],
+        geo=inputs.vocabulary.modality_to_id["geo"],
+    ))
+    with torch.no_grad():
+        output = FoundationModel(inputs.model_config).encode(batch)
+    assert output.short_term.shape == (1, 8)
