@@ -5,7 +5,8 @@ from __future__ import annotations
 from bisect import bisect_right
 from dataclasses import dataclass, field
 from datetime import datetime
-from typing import Any
+import math
+from typing import Any, Mapping
 
 from .types import CanonicalSample, KeyValueToken, TokenRecord
 from .vocab import VocabularyArtifacts
@@ -51,6 +52,10 @@ class TokenizerConfig:
         default_factory=lambda: DEFAULT_NUMERIC_FIELDS
     )
     numeric_transform_policy: dict[tuple[str, str], str] = field(default_factory=dict)
+    profile_allowlist: frozenset[str] | None = None
+    geo_field_registry: frozenset[str] = frozenset()
+    geo_catalogue: Mapping[str, tuple[float, float]] = field(default_factory=dict)
+    coordinate_tolerance: float = 1e-6
     time_gap_boundaries_seconds: tuple[float, ...] = (
         60.0,
         300.0,
@@ -159,7 +164,61 @@ def _append_token(
     event_group_id: str | None,
     max_text_chars: int,
     numeric_fields: frozenset[tuple[str, str]],
+    geo_field_registry: frozenset[str] = frozenset(),
+    geo_catalogue: Mapping[str, tuple[float, float]] | None = None,
+    coordinate_tolerance: float = 1e-6,
 ) -> None:
+    if coordinate_tolerance < 0:
+        raise ValueError("coordinate_tolerance must be non-negative")
+    if key in geo_field_registry:
+        if value is None:
+            output.append(
+                KeyValueToken(
+                    key=key,
+                    value=None,
+                    modality="geo",
+                    source=source,
+                    timestamp=timestamp,
+                    event_group_id=event_group_id,
+                )
+            )
+            return
+        if not isinstance(value, dict) or set(value) != {"lat", "lon", "geo_cell"}:
+            raise ValueError(f"{key} must be a geo object with lat, lon, and geo_cell")
+        try:
+            latitude = float(value["lat"])
+            longitude = float(value["lon"])
+        except (TypeError, ValueError) as error:
+            raise ValueError(f"{key} coordinates must be numeric") from error
+        cell = value["geo_cell"]
+        catalogue = geo_catalogue or {}
+        if (
+            not math.isfinite(latitude)
+            or not math.isfinite(longitude)
+            or not isinstance(cell, str)
+            or cell not in catalogue
+        ):
+            raise ValueError(f"{key} has invalid coordinates or geo_cell")
+        expected_latitude, expected_longitude = catalogue[cell]
+        if (
+            abs(latitude - expected_latitude) > coordinate_tolerance
+            or abs(longitude - expected_longitude) > coordinate_tolerance
+        ):
+            raise ValueError(f"{key} coordinates do not match geo_cell {cell!r}")
+        output.append(
+            KeyValueToken(
+                key=key,
+                value=cell,
+                modality="geo",
+                source=source,
+                timestamp=timestamp,
+                event_group_id=event_group_id,
+                geo_coordinates=(latitude, longitude),
+            )
+        )
+        return
+    if geo_field_registry and key.endswith("_location"):
+        raise ValueError(f"{key} is not registered as a geo field")
     modality = _modality(key, value, source=source, numeric_fields=numeric_fields)
     output.append(
         KeyValueToken(
@@ -188,7 +247,9 @@ def semantic_tokens(sample: CanonicalSample, config: TokenizerConfig) -> list[Ke
         numeric_fields=config.numeric_fields,
     )
     for key in sorted(sample.profile):
-        if key == "as_of_time":
+        if key == "as_of_time" or (
+            config.profile_allowlist is not None and key not in config.profile_allowlist
+        ):
             continue
         _append_token(
             tokens,
@@ -199,6 +260,9 @@ def semantic_tokens(sample: CanonicalSample, config: TokenizerConfig) -> list[Ke
             event_group_id=None,
             max_text_chars=config.max_text_chars,
             numeric_fields=config.numeric_fields,
+            geo_field_registry=config.geo_field_registry,
+            geo_catalogue=config.geo_catalogue,
+            coordinate_tolerance=config.coordinate_tolerance,
         )
 
     for event in sample.events:
@@ -211,6 +275,9 @@ def semantic_tokens(sample: CanonicalSample, config: TokenizerConfig) -> list[Ke
             event_group_id=event.source_record_id,
             max_text_chars=config.max_text_chars,
             numeric_fields=config.numeric_fields,
+            geo_field_registry=config.geo_field_registry,
+            geo_catalogue=config.geo_catalogue,
+            coordinate_tolerance=config.coordinate_tolerance,
         )
         _append_token(
             tokens,
@@ -233,6 +300,9 @@ def semantic_tokens(sample: CanonicalSample, config: TokenizerConfig) -> list[Ke
                 event_group_id=event.source_record_id,
                 max_text_chars=config.max_text_chars,
                 numeric_fields=config.numeric_fields,
+                geo_field_registry=config.geo_field_registry,
+                geo_catalogue=config.geo_catalogue,
+                coordinate_tolerance=config.coordinate_tolerance,
             )
         for key in sorted(event.action):
             if key == "content" and not config.include_action_content:
@@ -246,6 +316,9 @@ def semantic_tokens(sample: CanonicalSample, config: TokenizerConfig) -> list[Ke
                 event_group_id=event.source_record_id,
                 max_text_chars=config.max_text_chars,
                 numeric_fields=config.numeric_fields,
+                geo_field_registry=config.geo_field_registry,
+                geo_catalogue=config.geo_catalogue,
+                coordinate_tolerance=config.coordinate_tolerance,
             )
     return tokens
 
@@ -285,6 +358,7 @@ def tokenize_sample(
     previous_event_time: datetime | None = None
     last_group: str | None = None
     for token in semantic_tokens(sample, config):
+        geo_value, geo_missing = artifacts.normalize_geo(token)
         if token.source == "tabular":
             position_id = 0
             time_gap_id = 0
@@ -326,6 +400,8 @@ def tokenize_sample(
                     if token.modality == "numeric"
                     else False
                 ),
+                geo_value=geo_value,
+                geo_missing=geo_missing,
             )
         )
     return records

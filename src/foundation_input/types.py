@@ -28,6 +28,7 @@ class KeyValueToken:
     source: str
     timestamp: datetime | None
     event_group_id: str | None = None
+    geo_coordinates: tuple[float, float] | None = None
 
 
 @dataclass(frozen=True)
@@ -43,6 +44,8 @@ class TokenRecord:
     time_gap_id: int
     numeric_value: float = 0.0
     numeric_missing: bool = False
+    geo_value: tuple[float, float] = (0.0, 0.0)
+    geo_missing: bool = False
 
 
 @dataclass(frozen=True)

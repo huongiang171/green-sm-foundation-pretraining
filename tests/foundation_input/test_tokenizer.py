@@ -35,6 +35,16 @@ def _score_sample(value: float | None) -> CanonicalSample:
     return _sample({"score": value}, (_event(),))
 
 
+def _green_geo_config() -> TokenizerConfig:
+    return TokenizerConfig(
+        profile_allowlist=frozenset({"home_location", "budget_bucket"}),
+        context_allowlist={"Food": ("merchant_location", "food_category")},
+        geo_field_registry=frozenset({"profile.home_location", "context.merchant_location"}),
+        geo_catalogue={"cell_00": (21.0, 105.0), "cell_01": (21.1, 105.1)},
+        coordinate_tolerance=1e-6,
+    )
+
+
 def test_profile_column_order_does_not_change_tabular_token_set() -> None:
     event = _event()
     first = _sample({"event_count_30d": 2, "active_days_30d": 1}, (event,))
@@ -201,3 +211,75 @@ def test_tokenizer_contract_round_trips(tmp_path) -> None:
     artifacts.save(path)
 
     assert VocabularyArtifacts.load(path).tokenizer_contract == artifacts.tokenizer_contract
+
+
+def test_green_sm_geo_tokens_keep_cell_and_coordinates_and_filter_profile() -> None:
+    event = _event(
+        scenario="Food",
+        context={
+            "merchant_location": {"lat": 21.1, "lon": 105.1, "geo_cell": "cell_01"},
+            "food_category": "noodles",
+            "future_label": "must-not-enter",
+        },
+    )
+    sample = _sample(
+        {
+            "home_location": {"lat": 21.0, "lon": 105.0, "geo_cell": "cell_00"},
+            "budget_bucket": "medium",
+            "private_future_field": "must-not-enter",
+        },
+        (event,),
+    )
+
+    tokens = semantic_tokens(sample, _green_geo_config())
+    by_key = {token.key: token for token in tokens}
+
+    assert by_key["profile.home_location"].modality == "geo"
+    assert by_key["profile.home_location"].value == "cell_00"
+    assert by_key["profile.home_location"].geo_coordinates == (21.0, 105.0)
+    assert by_key["context.merchant_location"].modality == "geo"
+    assert by_key["context.merchant_location"].value == "cell_01"
+    assert "context.food_category" in by_key
+    assert "profile.private_future_field" not in by_key
+    assert "context.future_label" not in by_key
+
+
+def test_geo_record_keeps_train_normalized_coordinates_and_cell_vocabulary_id() -> None:
+    event = _event(
+        scenario="Food",
+        context={
+            "merchant_location": {"lat": 21.1, "lon": 105.1, "geo_cell": "cell_01"},
+            "food_category": "noodles",
+        },
+    )
+    sample = _sample(
+        {"home_location": {"lat": 21.0, "lon": 105.0, "geo_cell": "cell_00"}}, (event,)
+    )
+    config = _green_geo_config()
+    artifacts = fit_vocabulary(semantic_tokens(sample, config), _vocabulary_config())
+
+    records = tokenize_sample(sample, artifacts, config)
+    home = next(record for record in records if record.token.key == "profile.home_location")
+    merchant = next(record for record in records if record.token.key == "context.merchant_location")
+
+    assert home.value_id != 4
+    assert merchant.value_id != 4
+    assert home.geo_value == pytest.approx((-1.0, -1.0))
+    assert merchant.geo_value == pytest.approx((1.0, 1.0))
+    assert home.geo_missing is False
+
+
+@pytest.mark.parametrize(
+    "value",
+    [
+        [21.0, 105.0],
+        "cell_00",
+        {"lat": 21.0, "lon": 105.0, "geo_cell": "unknown"},
+        {"lat": 21.2, "lon": 105.0, "geo_cell": "cell_00"},
+    ],
+)
+def test_green_sm_tokenizer_rejects_invalid_registered_location(value: object) -> None:
+    sample = _sample({"home_location": value}, ())
+
+    with pytest.raises(ValueError, match="profile.home_location"):
+        semantic_tokens(sample, _green_geo_config())

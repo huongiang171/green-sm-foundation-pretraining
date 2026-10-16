@@ -62,6 +62,14 @@ def _tokenizer_contract(config: Any) -> dict[str, object]:
         "max_text_chars": config.max_text_chars,
         "numeric_fields": [list(field) for field in sorted(config.numeric_fields)],
         "time_gap_boundaries_seconds": list(config.time_gap_boundaries_seconds),
+        "profile_allowlist": (
+            None if config.profile_allowlist is None else sorted(config.profile_allowlist)
+        ),
+        "geo_field_registry": sorted(config.geo_field_registry),
+        "geo_catalogue": {
+            key: list(config.geo_catalogue[key]) for key in sorted(config.geo_catalogue)
+        },
+        "coordinate_tolerance": config.coordinate_tolerance,
     }
 
 
@@ -81,6 +89,7 @@ class VocabularyArtifacts:
     numeric_normalization: dict[str, tuple[float, float]] = field(default_factory=dict)
     numeric_field_registry: tuple[tuple[str, str], ...] = ()
     numeric_transform_policy: dict[str, str] = field(default_factory=dict)
+    geo_normalization: tuple[float, float, float, float] | None = None
     time_gap_boundaries_seconds: tuple[float, ...] = ()
     tokenizer_contract: dict[str, object] = field(default_factory=dict)
 
@@ -126,6 +135,22 @@ class VocabularyArtifacts:
         elif policy != "zscore":
             raise ValueError(f"Unsupported numeric transform policy: {policy!r}")
         return (value - center) / max(scale, 1e-6), False
+
+    def normalize_geo(self, token: KeyValueToken) -> tuple[tuple[float, float], bool]:
+        if token.modality != "geo":
+            return (0.0, 0.0), False
+        if token.geo_coordinates is None:
+            return (0.0, 0.0), True
+        if self.geo_normalization is None:
+            raise ValueError("Vocabulary lacks train-fitted geo normalization")
+        latitude, longitude = token.geo_coordinates
+        if not math.isfinite(latitude) or not math.isfinite(longitude):
+            return (0.0, 0.0), True
+        latitude_center, latitude_scale, longitude_center, longitude_scale = self.geo_normalization
+        return (
+            (latitude - latitude_center) / latitude_scale,
+            (longitude - longitude_center) / longitude_scale,
+        ), False
 
     def encode_value(self, token: KeyValueToken) -> int:
         namespace = _namespace(self.dataset_name, token)
@@ -180,6 +205,7 @@ class VocabularyArtifacts:
             },
             "numeric_field_registry": [list(item) for item in self.numeric_field_registry],
             "numeric_transform_policy": self.numeric_transform_policy,
+            "geo_normalization": list(self.geo_normalization) if self.geo_normalization else None,
             "time_gap_boundaries_seconds": list(self.time_gap_boundaries_seconds),
             "tokenizer_contract": self.tokenizer_contract,
         }
@@ -231,6 +257,11 @@ class VocabularyArtifacts:
                 str(namespace): str(policy)
                 for namespace, policy in payload.get("numeric_transform_policy", {}).items()
             },
+            geo_normalization=(
+                tuple(float(value) for value in payload["geo_normalization"])
+                if payload.get("geo_normalization") is not None
+                else None
+            ),
             time_gap_boundaries_seconds=tuple(
                 float(value) for value in payload.get("time_gap_boundaries_seconds", [])
             ),
@@ -251,6 +282,7 @@ def fit_vocabulary(
 
     categorical_counts: dict[str, Counter[str]] = defaultdict(Counter)
     numeric_values: dict[str, list[float]] = defaultdict(list)
+    geo_coordinates: list[tuple[float, float]] = []
     keys: set[str] = set()
     modalities: set[str] = set()
     sources: set[str] = set()
@@ -267,6 +299,11 @@ def fit_vocabulary(
                 continue
             if math.isfinite(value):
                 numeric_values[namespace].append(value)
+        elif token.modality == "geo" and token.geo_coordinates is not None:
+            latitude, longitude = token.geo_coordinates
+            if math.isfinite(latitude) and math.isfinite(longitude):
+                geo_coordinates.append((latitude, longitude))
+            categorical_counts[namespace][_value_key(token.value)] += 1
         elif token.modality != "text":
             categorical_counts[namespace][_value_key(token.value)] += 1
 
@@ -307,6 +344,24 @@ def fit_vocabulary(
         numeric_transform_policy[namespace] = policy
         registry_set.add(field_key)
 
+    geo_normalization: tuple[float, float, float, float] | None = None
+    if geo_coordinates:
+        latitudes, longitudes = zip(*geo_coordinates)
+        latitude_center = sum(latitudes) / len(latitudes)
+        longitude_center = sum(longitudes) / len(longitudes)
+        latitude_scale = math.sqrt(
+            sum((value - latitude_center) ** 2 for value in latitudes) / len(latitudes)
+        ) or 1.0
+        longitude_scale = math.sqrt(
+            sum((value - longitude_center) ** 2 for value in longitudes) / len(longitudes)
+        ) or 1.0
+        geo_normalization = (
+            latitude_center,
+            latitude_scale,
+            longitude_center,
+            longitude_scale,
+        )
+
     return VocabularyArtifacts(
         dataset_name=config.dataset_name,
         value_to_id=value_to_id,
@@ -322,6 +377,7 @@ def fit_vocabulary(
         numeric_normalization=numeric_normalization,
         numeric_field_registry=tuple(sorted(registry_set)),
         numeric_transform_policy=numeric_transform_policy,
+        geo_normalization=geo_normalization,
         time_gap_boundaries_seconds=config.time_gap_boundaries_seconds,
     )
 
