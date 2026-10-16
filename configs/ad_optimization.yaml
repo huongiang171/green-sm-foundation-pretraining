@@ -1,0 +1,30 @@
+seed: 42
+task: ad_optimization
+data:
+  opportunities_root: /kaggle/input/vric-taobao-ads-downstream-v1
+  manifest_path: /kaggle/input/vric-taobao-ads-downstream-v1/manifest.json
+  foundation_root: /kaggle/input/vric-taobao-ads-foundation-v1
+  foundation_manifest_path: /kaggle/input/vric-taobao-ads-foundation-v1/manifest.json
+  vocabulary_path: /kaggle/input/vric-foundation-checkpoint/vocabulary.json
+  expected_data_version: taobao_ads_foundation_v1
+  expected_ads_manifest_sha256: 49514d19ea9c061ecb935c5b260a30a7abfdef4ca5a1dba47df5524437c0b219
+  expected_foundation_manifest_sha256: c01423aca9824ebf1ab60018175f89f0ad698559165679a04b7cb08d20005fc2
+  max_tokens: 256
+checkpoint:
+  path: /kaggle/input/vric-foundation-checkpoint/foundation_checkpoint.pt
+  manifest_path: /kaggle/input/vric-foundation-checkpoint/checkpoint_manifest.json
+  expected_sha256: supplied-by-member-3-checkpoint-manifest
+  expected_format_version: 1
+freeze_foundation: true
+model:
+  d_model: 128
+  dropout: 0.1
+  candidate_hash_buckets: 65536
+  campaign_hash_buckets: 16384
+training:
+  device: cuda
+  batch_size: 16
+  epochs: 10
+  learning_rate: 0.0003
+  weight_decay: 0.00001
+  artifact_dir: /kaggle/working/artifacts

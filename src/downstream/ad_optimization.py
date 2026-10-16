@@ -1,0 +1,673 @@
+"""Frozen-foundation CTR ranking utilities for the Taobao Ads artifact."""
+
+from __future__ import annotations
+
+import argparse
+import hashlib
+import json
+import re
+import sys
+from collections import defaultdict
+from collections.abc import Iterable, Mapping, Sequence
+from dataclasses import dataclass
+from pathlib import Path
+from typing import Any, Literal
+
+import pyarrow.parquet as pq
+import torch
+import yaml
+from torch import nn
+from torch.nn import functional as F
+
+from src.foundation_input.dataset import DatasetConfig, FoundationPretrainDataset, encode_sample
+from src.foundation_input.loader import iter_normalized_samples
+from src.foundation_input.types import EncodedSample, FoundationBatch
+from src.foundation_input.vocab import VocabularyArtifacts
+
+SPLITS = frozenset({"train", "validation", "test"})
+VOCABULARY_FIELDS = frozenset({"cate_id", "pid"})
+OOV_FIELDS = ("candidate_id", "campaign_id", "cate_id", "user_id")
+_SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
+
+
+class AdConfigurationError(ValueError):
+    """The Member 4 config or the Data-team handoff is invalid."""
+
+
+class UpstreamHandoffError(RuntimeError):
+    """A required Member 3/contract handoff has not been delivered yet."""
+
+
+def _read_json(path: Path, *, label: str) -> dict[str, Any]:
+    if not path.is_file():
+        raise AdConfigurationError(f"{label} not found: {path}")
+    try:
+        value = json.loads(path.read_text(encoding="utf-8"))
+    except json.JSONDecodeError as error:
+        raise AdConfigurationError(f"{label} is not valid JSON: {path}") from error
+    if not isinstance(value, dict):
+        raise AdConfigurationError(f"{label} must contain a JSON object: {path}")
+    return value
+
+
+def _sha256(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as handle:
+        for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def _require_mapping(config: Mapping[str, Any], key: str) -> Mapping[str, Any]:
+    value = config.get(key)
+    if not isinstance(value, Mapping):
+        raise AdConfigurationError(f"config.{key} must be a mapping")
+    return value
+
+
+def _require_text(config: Mapping[str, Any], key: str, *, prefix: str = "config") -> str:
+    value = config.get(key)
+    if not isinstance(value, str) or not value.strip():
+        raise AdConfigurationError(f"{prefix}.{key} must be a non-empty string")
+    return value.strip()
+
+
+def _verify_sha256(path: Path, expected: str, *, label: str) -> None:
+    if not _SHA256_RE.fullmatch(expected):
+        raise AdConfigurationError(f"{label} expected SHA-256 must be 64 lowercase hexadecimal characters")
+    if not path.is_file():
+        raise AdConfigurationError(f"{label} not found: {path}")
+    actual = _sha256(path)
+    if actual != expected:
+        raise AdConfigurationError(f"{label} SHA-256 mismatch: expected {expected}, got {actual}")
+
+
+def load_ad_optimization_config(path: str | Path) -> dict[str, Any]:
+    """Load the explicit Member 4 YAML configuration without starting training."""
+
+    config_path = Path(path)
+    if not config_path.is_file():
+        raise AdConfigurationError(f"config file not found: {config_path}")
+    try:
+        value = yaml.safe_load(config_path.read_text(encoding="utf-8"))
+    except yaml.YAMLError as error:
+        raise AdConfigurationError(f"config file is not valid YAML: {config_path}") from error
+    if not isinstance(value, dict):
+        raise AdConfigurationError("config root must be a mapping")
+    return value
+
+
+def validate_ads_data_handoff(config: Mapping[str, Any]) -> dict[str, Any]:
+    """Verify the immutable Data-team artifacts before any model is constructed.
+
+    This deliberately checks checksums and the cross-manifest link, so a Kaggle
+    mount with stale or mixed artifacts is rejected before training.
+    """
+
+    if config.get("task") != "ad_optimization":
+        raise AdConfigurationError("config.task must be 'ad_optimization'")
+    data = _require_mapping(config, "data")
+    ads_root = Path(_require_text(data, "opportunities_root", prefix="config.data"))
+    foundation_root = Path(_require_text(data, "foundation_root", prefix="config.data"))
+    ads_manifest_path = Path(_require_text(data, "manifest_path", prefix="config.data"))
+    foundation_manifest_path = Path(_require_text(data, "foundation_manifest_path", prefix="config.data"))
+    expected_ads_sha = _require_text(data, "expected_ads_manifest_sha256", prefix="config.data")
+    expected_foundation_sha = _require_text(data, "expected_foundation_manifest_sha256", prefix="config.data")
+
+    _verify_sha256(ads_manifest_path, expected_ads_sha, label="Ads manifest")
+    _verify_sha256(foundation_manifest_path, expected_foundation_sha, label="Foundation manifest")
+    ads_manifest = _read_json(ads_manifest_path, label="Ads manifest")
+    foundation_manifest = _read_json(foundation_manifest_path, label="Foundation manifest")
+
+    if ads_manifest.get("schema_version") != "taobao_ads_opportunities_v1":
+        raise AdConfigurationError("Ads manifest has unsupported schema_version")
+    if ads_manifest.get("data_version") != _require_text(data, "expected_data_version", prefix="config.data"):
+        raise AdConfigurationError("Ads manifest data_version does not match config.data.expected_data_version")
+    if ads_manifest.get("foundation_manifest_sha256") != expected_foundation_sha:
+        raise AdConfigurationError("Ads manifest is not linked to the configured Foundation manifest")
+    if foundation_manifest.get("schema_version") != "omnibehavior_pretraining_v2":
+        raise AdConfigurationError("Foundation manifest has unsupported schema_version")
+    if foundation_manifest.get("status") != "complete":
+        raise AdConfigurationError("Foundation manifest status must be 'complete'")
+
+    files = ads_manifest.get("files")
+    if not isinstance(files, Mapping) or set(files) != SPLITS:
+        raise AdConfigurationError("Ads manifest must contain exactly train, validation, and test files")
+    for split in sorted(SPLITS):
+        entry = files[split]
+        if not isinstance(entry, Mapping):
+            raise AdConfigurationError(f"Ads manifest files.{split} must be a mapping")
+        filename = _require_text(entry, "file", prefix=f"Ads manifest files.{split}")
+        checksum = _require_text(entry, "sha256", prefix=f"Ads manifest files.{split}")
+        _verify_sha256(ads_root / filename, checksum, label=f"Ads {split} parquet")
+
+    if not ads_root.is_dir() or not foundation_root.is_dir():
+        raise AdConfigurationError("configured opportunities_root and foundation_root must be directories")
+    return {
+        "ads_manifest_sha256": expected_ads_sha,
+        "foundation_manifest_sha256": expected_foundation_sha,
+        "data_version": ads_manifest["data_version"],
+        "splits": sorted(SPLITS),
+    }
+
+
+def validate_member3_handoff(config: Mapping[str, Any]) -> None:
+    """Load only the public checksum/identity-verified frozen Foundation artifact."""
+
+    if config.get("freeze_foundation") is not True:
+        raise AdConfigurationError("config.freeze_foundation must be true for the frozen-foundation Ads task")
+    checkpoint = _require_mapping(config, "checkpoint")
+    expected_sha = _require_text(checkpoint, "expected_sha256", prefix="config.checkpoint")
+    if expected_sha.startswith("supplied-by-member-3"):
+        raise UpstreamHandoffError(
+            "Member 3 checkpoint manifest has not been supplied: replace "
+            "checkpoint.expected_sha256 and add the checkpoint artifact before training."
+        )
+    checkpoint_path = Path(_require_text(checkpoint, "path", prefix="config.checkpoint"))
+    _verify_sha256(checkpoint_path, expected_sha, label="Foundation checkpoint")
+    manifest_path = Path(_require_text(checkpoint, "manifest_path", prefix="config.checkpoint"))
+    try:
+        from src.contracts.output import OutputContractV1  # noqa: F401
+        from src.training.checkpoint import load_foundation_checkpoint
+
+        load_foundation_checkpoint(checkpoint_path, manifest_path)
+    except (ModuleNotFoundError, ValueError) as error:
+        raise UpstreamHandoffError(f"Member 3 checkpoint handoff is invalid: {error}") from error
+
+
+def main(argv: Sequence[str] | None = None) -> int:
+    """CLI entrypoint; it never reports success for an unimplemented train run."""
+
+    parser = argparse.ArgumentParser(description="Validate or train frozen-Foundation Ads ranking.")
+    parser.add_argument("--config", required=True, help="Path to ad_optimization YAML config.")
+    parser.add_argument(
+        "--validate-data",
+        action="store_true",
+        help="Validate only immutable Data-team artifacts and exit.",
+    )
+    parser.add_argument(
+        "--preflight",
+        action="store_true",
+        help="Validate data plus Member 3 checkpoint/output-contract handoff; does not train.",
+    )
+    args = parser.parse_args(argv)
+    if args.validate_data and args.preflight:
+        parser.error("--validate-data and --preflight cannot be used together")
+
+    try:
+        config = load_ad_optimization_config(args.config)
+        report = validate_ads_data_handoff(config)
+        if args.validate_data:
+            print(json.dumps({"status": "data_handoff_valid", **report}, sort_keys=True))
+            return 0
+        validate_member3_handoff(config)
+    except UpstreamHandoffError as error:
+        print(f"upstream handoff blocked: {error}", file=sys.stderr)
+        return 3
+    except AdConfigurationError as error:
+        print(f"configuration error: {error}", file=sys.stderr)
+        return 2
+
+    if args.preflight:
+        print(json.dumps({"status": "preflight_valid", **report}, sort_keys=True))
+        return 0
+    print(
+        "upstream handoff blocked: training runner is not available until Member 3 delivers "
+        "the versioned checkpoint loader and Output Contract v1.",
+        file=sys.stderr,
+    )
+    return 3
+
+
+def _text(value: Any, *, field: str, request_id: str = "<unknown>") -> str:
+    if value is None or not str(value).strip():
+        raise ValueError(f"request_id={request_id!r}: {field} must be non-empty")
+    return str(value).strip()
+
+
+def _integer(value: Any, *, field: str, request_id: str) -> int:
+    if isinstance(value, bool):
+        raise TypeError(f"request_id={request_id!r}: {field} must be an integer")
+    try:
+        return int(value)
+    except (TypeError, ValueError) as error:
+        raise ValueError(f"request_id={request_id!r}: {field} must be an integer") from error
+
+
+@dataclass(frozen=True)
+class AdOpportunity:
+    """One exposed candidate from the immutable Taobao Ads handoff."""
+
+    request_id: str
+    user_id: str
+    foundation_sample_id: str
+    cutoff_timestamp: int
+    candidate_id: str
+    clicked: int
+    split: str
+    exposure_timestamp: int
+    candidate_available_timestamp: int
+    pid: str
+    cate_id: str
+    campaign_id: str
+
+    @classmethod
+    def from_mapping(cls, row: Mapping[str, Any]) -> AdOpportunity:
+        request_id = _text(row.get("request_id"), field="request_id")
+        fields = (
+            "user_id",
+            "foundation_sample_id",
+            "candidate_id",
+            "split",
+            "pid",
+            "cate_id",
+            "campaign_id",
+        )
+        values = {
+            field: _text(row.get(field), field=field, request_id=request_id) for field in fields
+        }
+        split = values["split"]
+        if split not in SPLITS:
+            raise ValueError(f"request_id={request_id!r}: unsupported split {split!r}")
+        cutoff = _integer(row.get("cutoff_timestamp"), field="cutoff_timestamp", request_id=request_id)
+        exposure = _integer(
+            row.get("exposure_timestamp"), field="exposure_timestamp", request_id=request_id
+        )
+        available = _integer(
+            row.get("candidate_available_timestamp"),
+            field="candidate_available_timestamp",
+            request_id=request_id,
+        )
+        clicked = _integer(row.get("clicked"), field="clicked", request_id=request_id)
+        if clicked not in {0, 1}:
+            raise ValueError(f"request_id={request_id!r}: clicked must be 0 or 1")
+        if exposure > cutoff:
+            raise ValueError(
+                f"request_id={request_id!r}: exposure_timestamp exceeds cutoff_timestamp"
+            )
+        if available > cutoff:
+            raise ValueError(
+                f"request_id={request_id!r}: candidate_available_timestamp exceeds cutoff_timestamp"
+            )
+        return cls(
+            request_id=request_id,
+            user_id=values["user_id"],
+            foundation_sample_id=values["foundation_sample_id"],
+            cutoff_timestamp=cutoff,
+            candidate_id=values["candidate_id"],
+            clicked=clicked,
+            split=split,
+            exposure_timestamp=exposure,
+            candidate_available_timestamp=available,
+            pid=values["pid"],
+            cate_id=values["cate_id"],
+            campaign_id=values["campaign_id"],
+        )
+
+
+def validate_opportunities(
+    rows: Iterable[AdOpportunity], *, expected_split: str | None = None
+) -> tuple[AdOpportunity, ...]:
+    """Validate candidate-set integrity without silently changing the handoff."""
+
+    validated = tuple(rows)
+    if expected_split is not None and expected_split not in SPLITS:
+        raise ValueError(f"expected_split must be one of {sorted(SPLITS)}, got {expected_split!r}")
+    per_request: dict[str, AdOpportunity] = {}
+    seen_pairs: set[tuple[str, str]] = set()
+    for row in validated:
+        if expected_split is not None and row.split != expected_split:
+            raise ValueError(
+                f"request_id={row.request_id!r}: split {row.split!r} does not match {expected_split!r}"
+            )
+        previous = per_request.setdefault(row.request_id, row)
+        for field in ("user_id", "foundation_sample_id", "cutoff_timestamp", "split"):
+            if getattr(previous, field) != getattr(row, field):
+                raise ValueError(f"request_id={row.request_id!r}: inconsistent {field}")
+        pair = (row.request_id, row.candidate_id)
+        if pair in seen_pairs:
+            raise ValueError(
+                f"duplicate candidate in request_id={row.request_id!r}: {row.candidate_id!r}"
+            )
+        seen_pairs.add(pair)
+    return tuple(sorted(validated, key=lambda row: (row.request_id, row.candidate_id)))
+
+
+def load_ad_opportunities(path: str | Path, *, expected_split: str) -> tuple[AdOpportunity, ...]:
+    """Load a single split of contract-valid opportunity rows from Parquet."""
+
+    parquet_path = Path(path)
+    if not parquet_path.is_file():
+        raise ValueError(f"Ads opportunities file does not exist: {parquet_path}")
+    return validate_opportunities(
+        (AdOpportunity.from_mapping(row) for row in pq.read_table(parquet_path).to_pylist()),
+        expected_split=expected_split,
+    )
+
+
+def fit_train_vocabulary(
+    train_rows: Sequence[AdOpportunity], *, field: Literal["cate_id", "pid"]
+) -> dict[str, int]:
+    """Fit low-cardinality categorical IDs strictly on the train split."""
+
+    if field not in VOCABULARY_FIELDS:
+        raise ValueError(f"Unsupported train-only vocabulary field: {field!r}")
+    validated = validate_opportunities(train_rows, expected_split="train")
+    values = sorted({str(getattr(row, field)) for row in validated})
+    return {"<PAD>": 0, "<UNK>": 1, **{value: index + 2 for index, value in enumerate(values)}}
+
+
+def encode_train_category(value: str, vocabulary: Mapping[str, int]) -> int:
+    """Encode a train-fitted category or placement with deterministic UNK fallback."""
+
+    try:
+        unknown = int(vocabulary["<UNK>"])
+    except KeyError as error:
+        raise ValueError("Vocabulary lacks required <UNK> entry") from error
+    return int(vocabulary.get(value, unknown))
+
+
+def stable_hash_id(field_name: str, value: str, *, bucket_count: int) -> int:
+    """Return a deterministic non-padding embedding ID without fitting on future data."""
+
+    if bucket_count < 3:
+        raise ValueError("bucket_count must reserve PAD=0 and UNK=1")
+    if not value:
+        return 1
+    digest = hashlib.sha256(f"taobao-ads-v1\0{field_name}\0{value}".encode()).digest()
+    return 2 + int.from_bytes(digest[:8], "big") % (bucket_count - 2)
+
+
+def summarize_temporal_oov(
+    train_rows: Sequence[AdOpportunity], eval_rows: Sequence[AdOpportunity]
+) -> dict[str, dict[str, int | float]]:
+    """Describe future-catalog OOV without mutating rows or fitting evaluation values."""
+
+    train = validate_opportunities(train_rows, expected_split="train")
+    evaluation = validate_opportunities(eval_rows)
+    result: dict[str, dict[str, int | float]] = {}
+    for field in OOV_FIELDS:
+        known = {str(getattr(row, field)) for row in train}
+        values = [str(getattr(row, field)) for row in evaluation]
+        unseen = [value for value in values if value not in known]
+        result[field] = {
+            "rows": len(values),
+            "unseen_rows": len(unseen),
+            "unseen_rate": 0.0 if not values else len(unseen) / len(values),
+            "distinct_unseen": len(set(unseen)),
+        }
+    return result
+
+
+@dataclass
+class AdBatch:
+    """A request-major batch with padded candidate fields and a Foundation batch."""
+
+    foundation_batch: FoundationBatch
+    candidate_hash_ids: torch.LongTensor
+    campaign_hash_ids: torch.LongTensor
+    category_ids: torch.LongTensor
+    placement_ids: torch.LongTensor
+    clicked: torch.FloatTensor
+    candidate_mask: torch.BoolTensor
+    opportunities: tuple[tuple[AdOpportunity, ...], ...]
+
+
+def _group_requests(rows: Sequence[AdOpportunity]) -> tuple[tuple[AdOpportunity, ...], ...]:
+    grouped: dict[str, list[AdOpportunity]] = defaultdict(list)
+    for row in rows:
+        grouped[row.request_id].append(row)
+    return tuple(tuple(grouped[key]) for key in sorted(grouped))
+
+
+def build_ad_batches(
+    rows: Sequence[AdOpportunity],
+    *,
+    encoded_samples_by_id: Mapping[str, EncodedSample],
+    category_vocabulary: Mapping[str, int],
+    placement_vocabulary: Mapping[str, int],
+    candidate_hash_buckets: int,
+    campaign_hash_buckets: int,
+    batch_size: int,
+) -> tuple[AdBatch, ...]:
+    """Create request-major batches without sampling or dropping candidates."""
+
+    if batch_size <= 0:
+        raise ValueError("batch_size must be positive")
+    validated = validate_opportunities(rows)
+    grouped = _group_requests(validated)
+    batches: list[AdBatch] = []
+    for offset in range(0, len(grouped), batch_size):
+        requests = grouped[offset : offset + batch_size]
+        samples: list[EncodedSample] = []
+        for request in requests:
+            reference = request[0]
+            if not request:
+                raise ValueError("Cannot construct a batch with an empty request")
+            sample = encoded_samples_by_id.get(reference.foundation_sample_id)
+            if sample is None:
+                raise ValueError(
+                    f"request_id={reference.request_id!r}: missing foundation_sample_id "
+                    f"{reference.foundation_sample_id!r}"
+                )
+            samples.append(sample)
+        from src.foundation_input.dataset import foundation_collate
+
+        foundation_batch = foundation_collate(samples)
+        width = max(len(request) for request in requests)
+        shape = (len(requests), width)
+        candidate_hash_ids = torch.zeros(shape, dtype=torch.long)
+        campaign_hash_ids = torch.zeros(shape, dtype=torch.long)
+        category_ids = torch.zeros(shape, dtype=torch.long)
+        placement_ids = torch.zeros(shape, dtype=torch.long)
+        clicked = torch.zeros(shape, dtype=torch.float32)
+        candidate_mask = torch.zeros(shape, dtype=torch.bool)
+        for request_index, request in enumerate(requests):
+            for candidate_index, row in enumerate(request):
+                candidate_hash_ids[request_index, candidate_index] = stable_hash_id(
+                    "candidate_id", row.candidate_id, bucket_count=candidate_hash_buckets
+                )
+                campaign_hash_ids[request_index, candidate_index] = stable_hash_id(
+                    "campaign_id", row.campaign_id, bucket_count=campaign_hash_buckets
+                )
+                category_ids[request_index, candidate_index] = encode_train_category(
+                    row.cate_id, category_vocabulary
+                )
+                placement_ids[request_index, candidate_index] = encode_train_category(
+                    row.pid, placement_vocabulary
+                )
+                clicked[request_index, candidate_index] = float(row.clicked)
+                candidate_mask[request_index, candidate_index] = True
+        batches.append(
+            AdBatch(
+                foundation_batch=foundation_batch,
+                candidate_hash_ids=candidate_hash_ids,
+                campaign_hash_ids=campaign_hash_ids,
+                category_ids=category_ids,
+                placement_ids=placement_ids,
+                clicked=clicked,
+                candidate_mask=candidate_mask,
+                opportunities=requests,
+            )
+        )
+    return tuple(batches)
+
+
+def _validate_feature_ids(name: str, value: torch.Tensor, *, size: int) -> None:
+    if value.ndim != 2 or value.dtype != torch.long:
+        raise ValueError(f"{name} must be a torch.long tensor with shape [B, C]")
+    if value.numel() and (value.min().item() < 0 or value.max().item() >= size):
+        raise ValueError(f"{name} contains IDs outside [0, {size})")
+
+
+class AdRanker(nn.Module):
+    """Candidate scorer consuming only the public Foundation user embeddings."""
+
+    def __init__(
+        self,
+        *,
+        candidate_buckets: int,
+        campaign_buckets: int,
+        num_categories: int,
+        num_placements: int,
+        d_model: int,
+        dropout: float,
+    ) -> None:
+        super().__init__()
+        if min(candidate_buckets, campaign_buckets, num_categories, num_placements, d_model) <= 0:
+            raise ValueError("Embedding cardinalities and d_model must be positive")
+        if candidate_buckets < 3 or campaign_buckets < 3:
+            raise ValueError("Hash buckets must reserve PAD=0 and UNK=1")
+        self.candidate_buckets = candidate_buckets
+        self.campaign_buckets = campaign_buckets
+        self.num_categories = num_categories
+        self.num_placements = num_placements
+        self.d_model = d_model
+        self.candidate_embedding = nn.Embedding(candidate_buckets, d_model, padding_idx=0)
+        self.campaign_embedding = nn.Embedding(campaign_buckets, d_model, padding_idx=0)
+        self.category_embedding = nn.Embedding(num_categories, d_model, padding_idx=0)
+        self.placement_embedding = nn.Embedding(num_placements, d_model, padding_idx=0)
+        self.user_fusion = nn.Sequential(
+            nn.LayerNorm(d_model * 2), nn.Linear(d_model * 2, d_model), nn.GELU()
+        )
+        self.candidate_fusion = nn.Sequential(
+            nn.LayerNorm(d_model * 4), nn.Linear(d_model * 4, d_model), nn.GELU()
+        )
+        self.scorer = nn.Sequential(
+            nn.LayerNorm(d_model * 2),
+            nn.Linear(d_model * 2, d_model),
+            nn.GELU(),
+            nn.Dropout(dropout),
+            nn.Linear(d_model, 1),
+        )
+
+    def forward(
+        self,
+        long_term: torch.Tensor,
+        short_term: torch.Tensor,
+        *,
+        candidate_hash_ids: torch.LongTensor,
+        campaign_hash_ids: torch.LongTensor,
+        category_ids: torch.LongTensor,
+        placement_ids: torch.LongTensor,
+    ) -> torch.Tensor:
+        if (
+            long_term.ndim != 2
+            or long_term.shape != short_term.shape
+            or long_term.shape[1] != self.d_model
+            or not torch.is_floating_point(long_term)
+            or not torch.is_floating_point(short_term)
+            or not torch.isfinite(long_term).all()
+            or not torch.isfinite(short_term).all()
+        ):
+            raise ValueError("long_term and short_term must be finite floating [B, d_model] tensors")
+        expected = candidate_hash_ids.shape
+        for name, tensor, cardinality in (
+            ("candidate_hash_ids", candidate_hash_ids, self.candidate_buckets),
+            ("campaign_hash_ids", campaign_hash_ids, self.campaign_buckets),
+            ("category_ids", category_ids, self.num_categories),
+            ("placement_ids", placement_ids, self.num_placements),
+        ):
+            _validate_feature_ids(name, tensor, size=cardinality)
+            if tensor.shape != expected:
+                raise ValueError("All candidate feature tensors must share shape [B, C]")
+        if expected[0] != long_term.shape[0]:
+            raise ValueError("Candidate batch dimension must match Foundation embeddings")
+        user = self.user_fusion(torch.cat((long_term, short_term), dim=-1))
+        candidate = self.candidate_fusion(
+            torch.cat(
+                (
+                    self.candidate_embedding(candidate_hash_ids),
+                    self.campaign_embedding(campaign_hash_ids),
+                    self.category_embedding(category_ids),
+                    self.placement_embedding(placement_ids),
+                ),
+                dim=-1,
+            )
+        )
+        logits = self.scorer(
+            torch.cat((user.unsqueeze(1).expand(-1, expected[1], -1), candidate), dim=-1)
+        ).squeeze(-1)
+        if not torch.isfinite(logits).all():
+            raise ValueError("AdRanker produced non-finite logits")
+        return logits
+
+
+def masked_binary_cross_entropy(
+    logits: torch.Tensor, clicked: torch.Tensor, candidate_mask: torch.BoolTensor
+) -> tuple[torch.Tensor, int]:
+    """Binary CTR loss over only handed-off candidates, including no/multi-click requests."""
+
+    if logits.ndim != 2 or clicked.shape != logits.shape or candidate_mask.shape != logits.shape:
+        raise ValueError("logits, clicked, and candidate_mask must share shape [B, C]")
+    if clicked.dtype != torch.float32 or candidate_mask.dtype != torch.bool:
+        raise ValueError("clicked must be float32 and candidate_mask must be bool")
+    if not torch.all((clicked == 0.0) | (clicked == 1.0)):
+        raise ValueError("clicked must contain only 0.0 or 1.0")
+    count = int(candidate_mask.sum().item())
+    if count == 0:
+        return logits.sum() * 0.0, 0
+    return F.binary_cross_entropy_with_logits(logits[candidate_mask], clicked[candidate_mask]), count
+
+
+def score_probabilities(logits: torch.Tensor, candidate_mask: torch.BoolTensor) -> torch.Tensor:
+    """Convert finite raw logits to probabilities while preserving padded-cell semantics."""
+
+    if logits.ndim != 2 or candidate_mask.shape != logits.shape or candidate_mask.dtype != torch.bool:
+        raise ValueError("logits and candidate_mask must share shape [B, C], with bool mask")
+    if not torch.isfinite(logits[candidate_mask]).all():
+        raise ValueError("Real candidate logits must be finite")
+    probabilities = torch.sigmoid(logits)
+    if not torch.all((probabilities[candidate_mask] >= 0.0) & (probabilities[candidate_mask] <= 1.0)):
+        raise ValueError("Real candidate probabilities must lie in [0, 1]")
+    return probabilities.masked_fill(~candidate_mask, 0.0)
+
+
+def load_encoded_foundation_samples_for_ads(
+    rows: Sequence[AdOpportunity],
+    *,
+    foundation_root: str | Path,
+    vocabulary_path: str | Path,
+    split: str,
+    max_tokens: int,
+) -> dict[str, EncodedSample]:
+    """Resolve Ads rows to aligned, vocabulary-bound Foundation encoded samples."""
+
+    validated = validate_opportunities(rows, expected_split=split)
+    by_sample: dict[str, AdOpportunity] = {}
+    for row in validated:
+        existing = by_sample.setdefault(row.foundation_sample_id, row)
+        if (
+            existing.user_id != row.user_id
+            or existing.cutoff_timestamp != row.cutoff_timestamp
+            or existing.split != row.split
+        ):
+            raise ValueError(f"foundation_sample_id={row.foundation_sample_id!r}: inconsistent Ads rows")
+    artifacts = VocabularyArtifacts.load(vocabulary_path)
+    dataset = FoundationPretrainDataset(
+        str(foundation_root), split, artifacts, dataset_config=DatasetConfig(max_tokens=max_tokens)
+    )
+    found: dict[str, EncodedSample] = {}
+    for canonical in iter_normalized_samples(foundation_root, split, validate=True):
+        opportunity = by_sample.get(canonical.sample_id)
+        if opportunity is None:
+            continue
+        if canonical.user_id != opportunity.user_id:
+            raise ValueError(f"{canonical.sample_id!r}: user_id does not match Ads opportunity")
+        if int(canonical.cutoff_time.timestamp()) != opportunity.cutoff_timestamp:
+            raise ValueError(f"{canonical.sample_id!r}: cutoff_timestamp does not match Ads opportunity")
+        if canonical.split != opportunity.split:
+            raise ValueError(f"{canonical.sample_id!r}: split does not match Ads opportunity")
+        if canonical.sample_id in found:
+            raise ValueError(f"Duplicate canonical foundation_sample_id {canonical.sample_id!r}")
+        found[canonical.sample_id] = encode_sample(
+            canonical, artifacts, dataset.tokenizer_config, dataset.dataset_config
+        )
+    missing = sorted(set(by_sample) - set(found))
+    if missing:
+        raise ValueError(f"foundation_sample_id not found in split {split!r}: {missing[0]!r}")
+    return found
+
+
+if __name__ == "__main__":  # pragma: no cover - exercised through the module CLI
+    raise SystemExit(main())

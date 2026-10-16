@@ -118,6 +118,8 @@ def save_checkpoint(
     torch.save(payload, temporary)
     os.replace(temporary, path)
     manifest = {
+        "schema_version": "green_sm_foundation_checkpoint_v1",
+        "checkpoint_format_version": 1,
         "checkpoint": path.name,
         "checkpoint_sha256": _sha256(path),
         "kind": kind,

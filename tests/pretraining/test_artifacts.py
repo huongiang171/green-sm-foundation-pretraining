@@ -111,3 +111,16 @@ def test_checkpoint_keeps_per_kind_manifests_and_round_trips_rng(tmp_path) -> No
     assert (tmp_path / "best_manifest.json").is_file()
     assert selected["selected_kind"] == "best"
     assert (random.random(), float(np.random.random()), float(torch.rand(()))) == expected
+
+
+def test_public_checkpoint_loader_verifies_selected_manifest(tmp_path) -> None:
+    from src.pretraining.artifacts import save_checkpoint
+    from src.training.checkpoint import load_foundation_checkpoint
+
+    checkpoint = save_checkpoint(_state(), kind="best", output_dir=tmp_path, identity=_identity(), global_step=1)
+    embedder = load_foundation_checkpoint(checkpoint, tmp_path / "best_manifest.json")
+
+    assert not any(parameter.requires_grad for parameter in embedder.parameters())
+    with pytest.raises(ValueError, match="SHA-256"):
+        checkpoint.write_bytes(b"tampered")
+        load_foundation_checkpoint(checkpoint, tmp_path / "best_manifest.json")
