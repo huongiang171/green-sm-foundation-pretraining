@@ -21,6 +21,7 @@ from typing import Any, Literal
 
 import pyarrow.parquet as pq
 import torch
+from torch import nn
 
 from src.foundation_input.dataset import DatasetConfig, encode_sample, foundation_collate
 from src.foundation_input.loader import iter_normalized_samples
@@ -481,3 +482,130 @@ def build_food_batches(
             )
         )
     return tuple(batches)
+
+
+class FoodRanker(nn.Module):
+    """Candidate ranker that consumes frozen long- and short-term user states."""
+
+    def __init__(
+        self,
+        *,
+        d_model: int,
+        item_hash_buckets: int,
+        merchant_hash_buckets: int,
+        num_categories: int,
+        num_geo_cells: int,
+        dropout: float,
+    ) -> None:
+        super().__init__()
+        if d_model < 1:
+            raise ValueError("d_model must be positive")
+        for name, size in (
+            ("item_hash_buckets", item_hash_buckets),
+            ("merchant_hash_buckets", merchant_hash_buckets),
+            ("num_categories", num_categories),
+            ("num_geo_cells", num_geo_cells),
+        ):
+            if size < 2:
+                raise ValueError(f"{name} must reserve padding ID 0 and contain at least two entries")
+        self.user_projection = nn.Sequential(
+            nn.Linear(2 * d_model, d_model), nn.GELU(), nn.LayerNorm(d_model)
+        )
+        self.item_embedding = nn.Embedding(item_hash_buckets, d_model, padding_idx=0)
+        self.merchant_embedding = nn.Embedding(merchant_hash_buckets, d_model, padding_idx=0)
+        self.category_embedding = nn.Embedding(num_categories, d_model, padding_idx=0)
+        self.geo_cell_embedding = nn.Embedding(num_geo_cells, d_model, padding_idx=0)
+        self.price_projection = nn.Linear(1, d_model)
+        self.coordinate_projection = nn.Linear(2, d_model)
+        self.candidate_projection = nn.Sequential(
+            nn.Linear(6 * d_model, d_model), nn.GELU(), nn.LayerNorm(d_model)
+        )
+        self.scorer = nn.Sequential(
+            nn.Linear(2 * d_model, d_model), nn.GELU(), nn.Dropout(dropout), nn.Linear(d_model, 1)
+        )
+
+    def forward(
+        self,
+        long_term: torch.Tensor,
+        short_term: torch.Tensor,
+        *,
+        item_hash_ids: torch.LongTensor,
+        merchant_hash_ids: torch.LongTensor,
+        category_ids: torch.LongTensor,
+        geo_cell_ids: torch.LongTensor,
+        price_values: torch.FloatTensor,
+        geo_values: torch.FloatTensor,
+    ) -> torch.Tensor:
+        if long_term.shape != short_term.shape or long_term.ndim != 2:
+            raise ValueError("long_term and short_term must be two-dimensional tensors of equal shape")
+        batch_size, _ = long_term.shape
+        candidate_shape = item_hash_ids.shape
+        if len(candidate_shape) != 2 or candidate_shape[0] != batch_size:
+            raise ValueError("candidate IDs must be [batch, candidates] and align with user embeddings")
+        if any(tensor.shape != candidate_shape for tensor in (
+            merchant_hash_ids, category_ids, geo_cell_ids, price_values
+        )):
+            raise ValueError("scalar candidate features must share the item_hash_ids shape")
+        if geo_values.shape != (*candidate_shape, 2):
+            raise ValueError("geo_values must be [batch, candidates, 2]")
+        user = self.user_projection(torch.cat((long_term, short_term), dim=-1))
+        candidate = torch.cat(
+            (
+                self.item_embedding(item_hash_ids),
+                self.merchant_embedding(merchant_hash_ids),
+                self.category_embedding(category_ids),
+                self.geo_cell_embedding(geo_cell_ids),
+                self.price_projection(price_values.unsqueeze(-1)),
+                self.coordinate_projection(geo_values),
+            ),
+            dim=-1,
+        )
+        candidate = self.candidate_projection(candidate)
+        users = user.unsqueeze(1).expand(-1, candidate.shape[1], -1)
+        return self.scorer(torch.cat((users, candidate), dim=-1)).squeeze(-1)
+
+
+def masked_multi_positive_listwise_loss(
+    scores: torch.Tensor,
+    positive_mask: torch.BoolTensor,
+    candidate_mask: torch.BoolTensor,
+) -> tuple[torch.Tensor, int]:
+    """Mean listwise loss for request rows with one or more positive candidates."""
+
+    if scores.shape != positive_mask.shape or scores.shape != candidate_mask.shape:
+        raise ValueError("scores, positive_mask, and candidate_mask must share shape [batch, candidates]")
+    if scores.ndim != 2:
+        raise ValueError("listwise Food scores must be two-dimensional")
+    if torch.any(positive_mask & ~candidate_mask):
+        raise ValueError("positive_mask must be a subset of candidate_mask")
+    losses: list[torch.Tensor] = []
+    for row_index in range(scores.shape[0]):
+        valid = candidate_mask[row_index]
+        positive = positive_mask[row_index]
+        valid_count = int(valid.sum().item())
+        positive_count = int(positive.sum().item())
+        if positive_count == 0 or positive_count == valid_count:
+            raise ValueError("each request requires at least one valid positive and one valid negative")
+        losses.append(torch.logsumexp(scores[row_index, valid], dim=0) - torch.logsumexp(scores[row_index, positive], dim=0))
+    if not losses:
+        raise ValueError("listwise Food loss requires at least one request")
+    return torch.stack(losses).mean(), len(losses)
+
+
+def frozen_foundation_food_logits(
+    embedder: Any, ranker: FoodRanker, batch: FoodBatch
+) -> torch.Tensor:
+    """Embed users without an autograd graph, then retain ranker gradients."""
+
+    with torch.no_grad():
+        embeddings = embedder.embed_users(batch.foundation_batch)
+    return ranker(
+        embeddings["long_term"],
+        embeddings["short_term"],
+        item_hash_ids=batch.item_hash_ids,
+        merchant_hash_ids=batch.merchant_hash_ids,
+        category_ids=batch.category_ids,
+        geo_cell_ids=batch.geo_cell_ids,
+        price_values=batch.price_values,
+        geo_values=batch.geo_values,
+    )

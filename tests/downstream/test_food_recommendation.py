@@ -298,3 +298,84 @@ def test_food_snapshot_resolution_returns_only_exact_matching_sample(
     )
 
     assert resolved == {"s1": encoded}
+
+
+def _food_features() -> dict[str, torch.Tensor]:
+    return {
+        "item_hash_ids": torch.tensor([[1, 2, 0], [3, 4, 5]]),
+        "merchant_hash_ids": torch.tensor([[1, 2, 0], [2, 3, 4]]),
+        "category_ids": torch.tensor([[1, 2, 0], [2, 3, 4]]),
+        "geo_cell_ids": torch.tensor([[1, 2, 0], [3, 4, 5]]),
+        "price_values": torch.tensor([[0.1, -0.2, 0.0], [1.0, 0.5, -1.0]]),
+        "geo_values": torch.tensor(
+            [[[0.1, 0.2], [0.3, 0.4], [0.0, 0.0]], [[0.5, 0.6], [0.7, 0.8], [0.9, 1.0]]]
+        ),
+    }
+
+
+def test_food_ranker_returns_finite_score_for_each_real_or_padded_candidate() -> None:
+    from src.downstream.food_recommendation import FoodRanker
+
+    ranker = FoodRanker(
+        d_model=4,
+        item_hash_buckets=11,
+        merchant_hash_buckets=13,
+        num_categories=6,
+        num_geo_cells=7,
+        dropout=0.0,
+    )
+
+    scores = ranker(torch.ones(2, 4), torch.zeros(2, 4), **_food_features())
+
+    assert scores.shape == (2, 3)
+    assert torch.isfinite(scores).all()
+
+
+def test_multi_positive_listwise_loss_prefers_higher_positive_scores() -> None:
+    from src.downstream.food_recommendation import masked_multi_positive_listwise_loss
+
+    good, _ = masked_multi_positive_listwise_loss(
+        torch.tensor([[3.0, 2.0, -2.0]]),
+        torch.tensor([[True, True, False]]),
+        torch.tensor([[True, True, True]]),
+    )
+    bad, _ = masked_multi_positive_listwise_loss(
+        torch.tensor([[-2.0, -1.0, 3.0]]),
+        torch.tensor([[True, True, False]]),
+        torch.tensor([[True, True, True]]),
+    )
+
+    assert good < bad
+
+
+class _StubFoundation(torch.nn.Module):
+    def __init__(self) -> None:
+        super().__init__()
+        self.scale = torch.nn.Parameter(torch.tensor(1.0))
+
+    def embed_users(self, _foundation_batch: object) -> dict[str, torch.Tensor]:
+        return {
+            "long_term": self.scale * torch.ones(1, 4),
+            "short_term": self.scale * torch.zeros(1, 4),
+        }
+
+
+def test_frozen_foundation_parameters_receive_no_gradient() -> None:
+    from src.downstream.food_recommendation import FoodRanker, frozen_foundation_food_logits
+
+    embedder = _StubFoundation()
+    ranker = FoodRanker(
+        d_model=4,
+        item_hash_buckets=11,
+        merchant_hash_buckets=13,
+        num_categories=6,
+        num_geo_cells=7,
+        dropout=0.0,
+    )
+    features = {name: value[:1] for name, value in _food_features().items()}
+    batch = SimpleNamespace(foundation_batch=object(), **features)
+
+    frozen_foundation_food_logits(embedder, ranker, batch).sum().backward()
+
+    assert all(parameter.grad is None for parameter in embedder.parameters())
+    assert any(parameter.grad is not None for parameter in ranker.parameters())
