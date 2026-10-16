@@ -20,6 +20,7 @@ from torch import nn
 from torch.nn import functional as F
 
 from src.foundation_input.dataset import DatasetConfig, FoundationPretrainDataset, encode_sample
+from src.foundation_input.tokenizer import TokenizerConfig
 from src.foundation_input.loader import iter_normalized_samples
 from src.foundation_input.types import EncodedSample, FoundationBatch
 from src.foundation_input.vocab import VocabularyArtifacts
@@ -630,6 +631,7 @@ def load_encoded_foundation_samples_for_ads(
     vocabulary_path: str | Path,
     split: str,
     max_tokens: int,
+    tokenizer_config: TokenizerConfig | None = None,
 ) -> dict[str, EncodedSample]:
     """Resolve Ads rows to aligned, vocabulary-bound Foundation encoded samples."""
 
@@ -645,7 +647,8 @@ def load_encoded_foundation_samples_for_ads(
             raise ValueError(f"foundation_sample_id={row.foundation_sample_id!r}: inconsistent Ads rows")
     artifacts = VocabularyArtifacts.load(vocabulary_path)
     dataset = FoundationPretrainDataset(
-        str(foundation_root), split, artifacts, dataset_config=DatasetConfig(max_tokens=max_tokens)
+        str(foundation_root), split, artifacts, tokenizer_config=tokenizer_config,
+        dataset_config=DatasetConfig(max_tokens=max_tokens)
     )
     found: dict[str, EncodedSample] = {}
     for canonical in iter_normalized_samples(foundation_root, split, validate=True):
