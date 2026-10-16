@@ -13,6 +13,11 @@ from typing import Literal
 import pyarrow as pa
 import pyarrow.parquet as pq
 
+_TASK_RULES = {
+    "ad_optimization": {"manifest_key": "ads_manifest_sha256", "score_semantics": "probability"},
+    "food_recommendation": {"manifest_key": "food_manifest_sha256", "score_semantics": "ranking"},
+}
+
 
 @dataclass(frozen=True)
 class ExpectedCandidate:
@@ -50,8 +55,8 @@ class VerifiedOpportunityIndex:
         data_version: str,
         source_checksums: Mapping[str, str],
     ) -> None:
-        if task != "ad_optimization":
-            raise ValueError("Only ad_optimization is supported by OutputContractV1")
+        if task not in _TASK_RULES:
+            raise ValueError(f"Unsupported OutputContractV1 task {task!r}")
         if not data_version or not source_checksums:
             raise ValueError("Verified opportunities require data_version and source checksums")
         values = tuple(rows)
@@ -78,15 +83,18 @@ class OutputContractV1:
         split: Literal["validation", "test"],
         run_metadata: Mapping[str, object],
     ) -> OutputPaths:
+        rule = _TASK_RULES[expected_candidates.task]
         required = {
             "selected_checkpoint_sha256", "vocabulary_sha256", "foundation_manifest_sha256",
-            "ads_manifest_sha256", "config_digest", "seed", "run_id", "score_semantics",
+            rule["manifest_key"], "config_digest", "seed", "run_id", "score_semantics",
         }
         missing = sorted(required - set(run_metadata))
         if missing:
             raise ValueError(f"run_metadata missing required fields {missing}")
-        if run_metadata["score_semantics"] != "probability":
-            raise ValueError("ad_optimization output requires probability score semantics")
+        if run_metadata["score_semantics"] != rule["score_semantics"]:
+            raise ValueError(
+                f"{expected_candidates.task} output requires {rule['score_semantics']!r} score semantics"
+            )
         submitted = tuple(rows)
         actual = {(row.request_id, row.candidate_id): row for row in submitted}
         if len(actual) != len(submitted):
@@ -100,8 +108,10 @@ class OutputContractV1:
             opportunity = expected[key]
             if prediction.split != split:
                 raise ValueError("Prediction split does not match requested output split")
-            if not math.isfinite(prediction.score) or not 0.0 <= prediction.score <= 1.0:
-                raise ValueError("Ads prediction score must be finite and within [0, 1]")
+            if not math.isfinite(prediction.score):
+                raise ValueError("Prediction score must be finite")
+            if expected_candidates.task == "ad_optimization" and not 0.0 <= prediction.score <= 1.0:
+                raise ValueError("Ads prediction score must be within [0, 1]")
             if prediction.raw_logit is not None and not math.isfinite(prediction.raw_logit):
                 raise ValueError("raw_logit must be finite when supplied")
             records.append({
@@ -117,8 +127,8 @@ class OutputContractV1:
         temporary = prediction_path.with_suffix(".parquet.tmp")
         pq.write_table(pa.Table.from_pylist(records), temporary, compression="zstd")
         os.replace(temporary, prediction_path)
-        manifest_path = directory / "run_manifest.json"
-        report_path = directory / "validation_report.json"
+        manifest_path = directory / f"run_manifest.{split}.json"
+        report_path = directory / f"validation_report.{split}.json"
         manifest = dict(run_metadata)
         manifest.update({"task": expected_candidates.task, "data_version": expected_candidates.data_version, "split": split, "prediction_file": prediction_path.name, "source_checksums": expected_candidates.source_checksums})
         report = {"schema_version": "output_contract_v1", "passed": True, "split": split, "candidate_count": len(records)}
