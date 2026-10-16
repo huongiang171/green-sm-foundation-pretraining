@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 from pathlib import Path
+from types import SimpleNamespace
 
 import pyarrow as pa
 import pyarrow.parquet as pq
@@ -223,3 +224,77 @@ def test_feature_artifacts_round_trip_preserves_train_normalizers_exactly(tmp_pa
     artifacts.save(path)
 
     assert FoodFeatureArtifacts.load(path) == artifacts
+
+
+def _labelled_food_request(*, foundation_sample_id: str = "s1"):
+    return [
+        _food_opportunity(foundation_sample_id=foundation_sample_id, is_positive=1),
+        _food_opportunity(
+            foundation_sample_id=foundation_sample_id,
+            candidate_id="candidate-2",
+            item_id="candidate-2",
+            is_positive=0,
+        ),
+    ]
+
+
+def _canonical(*, sample_id: str = "s1", user_id: str = "user-1", split: str = "train"):
+    return SimpleNamespace(
+        sample_id=sample_id,
+        user_id=user_id,
+        split=split,
+        cutoff_time=datetime.fromtimestamp(100, tz=timezone.utc),
+    )
+
+
+def _patch_food_snapshot_dependencies(monkeypatch: pytest.MonkeyPatch, canonicals, encoded) -> None:
+    import src.downstream.food_recommendation as food
+
+    monkeypatch.setattr(food, "load_green_sm_tokenizer_config", lambda _root: "tokenizer")
+    monkeypatch.setattr(food.VocabularyArtifacts, "load", lambda _path: "vocabulary")
+    monkeypatch.setattr(food, "iter_normalized_samples", lambda *_args, **_kwargs: iter(canonicals))
+    monkeypatch.setattr(food, "encode_sample", lambda *_args: encoded)
+
+
+def test_food_snapshot_resolution_rejects_user_cutoff_or_split_mismatch(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from src.downstream.food_recommendation import resolve_green_sm_food_samples
+
+    _patch_food_snapshot_dependencies(
+        monkeypatch,
+        [_canonical(user_id="different-user")],
+        _encoded_samples_by_id()["foundation-1"],
+    )
+
+    with pytest.raises(ValueError, match="s1.*user_id"):
+        resolve_green_sm_food_samples(
+            _labelled_food_request(foundation_sample_id="s1"),
+            foundation_root="unused",
+            vocabulary_path="unused",
+            split="train",
+            max_tokens=32,
+        )
+
+
+def test_food_snapshot_resolution_returns_only_exact_matching_sample(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from src.downstream.food_recommendation import resolve_green_sm_food_samples
+
+    encoded = _encoded_samples_by_id()["foundation-1"]
+    _patch_food_snapshot_dependencies(
+        monkeypatch,
+        [_canonical(), _canonical(sample_id="unreferenced")],
+        encoded,
+    )
+
+    resolved = resolve_green_sm_food_samples(
+        _labelled_food_request(foundation_sample_id="s1"),
+        foundation_root="unused",
+        vocabulary_path="unused",
+        split="train",
+        max_tokens=32,
+    )
+
+    assert resolved == {"s1": encoded}

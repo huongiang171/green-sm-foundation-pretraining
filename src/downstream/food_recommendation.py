@@ -22,8 +22,11 @@ from typing import Any, Literal
 import pyarrow.parquet as pq
 import torch
 
-from src.foundation_input.dataset import foundation_collate
+from src.foundation_input.dataset import DatasetConfig, encode_sample, foundation_collate
+from src.foundation_input.loader import iter_normalized_samples
 from src.foundation_input.types import EncodedSample, FoundationBatch
+from src.foundation_input.vocab import VocabularyArtifacts
+from src.pretraining.green_sm_contract import load_green_sm_tokenizer_config
 
 FoodSplit = Literal["train", "validation", "test"]
 _SPLITS = frozenset({"train", "validation", "test"})
@@ -203,6 +206,56 @@ def load_green_sm_food_opportunities(
         raise FileNotFoundError(f"Food opportunity parquet not found: {path}")
     rows = tuple(FoodOpportunity.from_mapping(row) for row in pq.read_table(path).to_pylist())
     return validate_food_opportunities(rows, split, require_labels=split != "test")
+
+
+def resolve_green_sm_food_samples(
+    rows: Sequence[FoodOpportunity],
+    *,
+    foundation_root: str | Path,
+    vocabulary_path: str | Path,
+    split: FoodSplit,
+    max_tokens: int,
+) -> dict[str, EncodedSample]:
+    """Resolve Food requests to exactly their causal Foundation snapshots."""
+
+    validated = validate_food_opportunities(rows, split, require_labels=split != "test")
+    by_sample: dict[str, FoodOpportunity] = {}
+    for row in validated:
+        existing = by_sample.setdefault(row.foundation_sample_id, row)
+        if (
+            existing.user_id != row.user_id
+            or existing.cutoff_timestamp != row.cutoff_timestamp
+            or existing.split != row.split
+        ):
+            raise ValueError(
+                f"foundation_sample_id={row.foundation_sample_id!r}: inconsistent Food rows"
+            )
+
+    artifacts = VocabularyArtifacts.load(vocabulary_path)
+    tokenizer = load_green_sm_tokenizer_config(foundation_root)
+    dataset_config = DatasetConfig(max_tokens=max_tokens)
+    found: dict[str, EncodedSample] = {}
+    for canonical in iter_normalized_samples(foundation_root, split, validate=True):
+        opportunity = by_sample.get(canonical.sample_id)
+        if opportunity is None:
+            continue
+        if canonical.user_id != opportunity.user_id:
+            raise ValueError(f"{canonical.sample_id!r}: user_id does not match Food opportunity")
+        if int(canonical.cutoff_time.timestamp()) != opportunity.cutoff_timestamp:
+            raise ValueError(
+                f"{canonical.sample_id!r}: cutoff_timestamp does not match Food opportunity"
+            )
+        if canonical.split != opportunity.split:
+            raise ValueError(f"{canonical.sample_id!r}: split does not match Food opportunity")
+        if canonical.sample_id in found:
+            raise ValueError(f"duplicate canonical foundation_sample_id {canonical.sample_id!r}")
+        found[canonical.sample_id] = encode_sample(
+            canonical, artifacts, tokenizer, dataset_config
+        )
+    missing = sorted(set(by_sample) - set(found))
+    if missing:
+        raise ValueError(f"foundation_sample_id not found in split {split!r}: {missing[0]!r}")
+    return found
 
 
 def stable_food_hash_id(field_name: str, value: str, bucket_count: int) -> int:
