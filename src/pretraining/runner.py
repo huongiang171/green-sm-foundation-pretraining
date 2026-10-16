@@ -72,8 +72,7 @@ def _model_config(config: PretrainingConfig, vocabulary: VocabularyArtifacts, ro
         "categorical_pair_buckets": config.model.categorical_pair_buckets,
         "sequence_source_id": routing.sequence, "numeric_modality_id": routing.numeric,
     }
-    if "geo_modality_id" in FoundationModelConfig.__dataclass_fields__:
-        kwargs["geo_modality_id"] = routing.geo
+    kwargs["geo_modality_id"] = routing.geo
     return FoundationModelConfig(**kwargs)
 
 
@@ -141,8 +140,7 @@ def make_training_state(
         "categorical_pair_buckets": categorical_pair_buckets, "sequence_source_id": routing.sequence,
         "numeric_modality_id": routing.numeric,
     }
-    if "geo_modality_id" in FoundationModelConfig.__dataclass_fields__:
-        model_kwargs["geo_modality_id"] = routing.geo
+    model_kwargs["geo_modality_id"] = routing.geo
     model = FoundationModel(FoundationModelConfig(**model_kwargs))
     fusion = UserEmbeddingFusion(d_model=d_model)
     heads = PretrainingHeads(d_model=d_model, value_vocab_size=value_vocab_size)

@@ -30,7 +30,7 @@ class UserIdAdapter(nn.Module):
 
 
 class GeoAdapter(nn.Module):
-    """Standalone normalized-coordinate adapter for a future geo batch extension."""
+    """Project normalized latitude/longitude features into the model dimension."""
 
     def __init__(self, *, d_model: int) -> None:
         super().__init__()
@@ -66,13 +66,15 @@ class GeoAdapter(nn.Module):
 
 
 class AdapterRegistry(nn.Module):
-    """Converts the FoundationBatch v2 contract into token vectors.
+    """Converts the FoundationBatch v3 contract into token vectors.
 
     Categorical, text, and missing tokens use bounded ID/pair embeddings. Numeric tokens keep
     their key, modality, and source context but replace value/pair lookup with an MLP over the
-    normalized raw value and its missing flag. Geo tensors remain unsupported until a versioned
-    geo field is added to ``FoundationBatch``.
+    normalized raw value and its missing flag. Geo tokens combine geo-cell ID features with a
+    coordinate projection, preserving both the location role and continuous coordinates.
     """
+
+    supports_geo_routing = True
 
     def __init__(self, config: FoundationModelConfig) -> None:
         super().__init__()
@@ -99,6 +101,7 @@ class AdapterRegistry(nn.Module):
             nn.GELU(),
             nn.Linear(config.d_model, config.d_model),
         )
+        self.geo_adapter = GeoAdapter(d_model=config.d_model)
         self.modality_projections = nn.ModuleList(
             nn.Linear(config.d_model, config.d_model, bias=False)
             for _ in range(config.modality_vocab_size)
@@ -142,6 +145,26 @@ class AdapterRegistry(nn.Module):
             raise ValueError("numeric_values must be finite")
         return values, missing_mask
 
+    def _geo_tensors(self, batch: FoundationBatch) -> tuple[torch.Tensor, torch.BoolTensor]:
+        batch_size, sequence_length = self._batch_shape(batch)
+        values = batch.geo_values
+        missing_mask = batch.geo_missing_mask
+        expected = (batch_size, sequence_length, 2)
+        if values.shape != expected or values.dtype != torch.float32:
+            raise ValueError(
+                "geo_values must be torch.float32 with shape "
+                f"{expected}, got shape={tuple(values.shape)}, dtype={values.dtype}"
+            )
+        if missing_mask.shape != (batch_size, sequence_length) or missing_mask.dtype != torch.bool:
+            raise ValueError(
+                "geo_missing_mask must be torch.bool with shape "
+                f"{(batch_size, sequence_length)}, got shape={tuple(missing_mask.shape)}, "
+                f"dtype={missing_mask.dtype}"
+            )
+        if not torch.isfinite(values).all():
+            raise ValueError("geo_values must be finite")
+        return values, missing_mask
+
     def _project_by_modality(
         self, features: torch.Tensor, modality_ids: torch.LongTensor
     ) -> torch.Tensor:
@@ -167,6 +190,7 @@ class AdapterRegistry(nn.Module):
         position_ids = self._ids(batch, "position_ids", self.config.max_length)
         time_gap_ids = self._ids(batch, "time_gap_ids", self.config.time_gap_vocab_size)
         numeric_values, numeric_missing_mask = self._numeric_tensors(batch)
+        geo_values, geo_missing_mask = self._geo_tensors(batch)
 
         pair_ids = torch.remainder(
             key_ids * 1_000_003 + input_ids, self.config.categorical_pair_buckets
@@ -183,8 +207,16 @@ class AdapterRegistry(nn.Module):
         numeric_features = self.numeric_mlp(
             torch.stack((numeric_values, numeric_missing_mask.to(torch.float32)), dim=-1)
         )
+        geo_features = id_features + self.geo_adapter(geo_values, geo_missing_mask)
         is_numeric = modality_ids.eq(self.config.numeric_modality_id).unsqueeze(-1)
-        features = shared_features + torch.where(is_numeric, numeric_features, id_features)
+        is_geo = (
+            modality_ids.eq(self.config.geo_modality_id).unsqueeze(-1)
+            if self.config.geo_modality_id is not None
+            else torch.zeros_like(modality_ids, dtype=torch.bool).unsqueeze(-1)
+        )
+        value_features = torch.where(is_numeric, numeric_features, id_features)
+        value_features = torch.where(is_geo, geo_features, value_features)
+        features = shared_features + value_features
 
         sequence_mask = batch.attention_mask & source_ids.eq(self.config.sequence_source_id)
         features = self._project_by_modality(features, modality_ids)

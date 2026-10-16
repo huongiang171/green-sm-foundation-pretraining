@@ -21,7 +21,7 @@ def _write_foundation_root(
     generator_digest: str = "same-generator",
     world_fingerprint: str = "same-world",
     readiness: bool = True,
-    v3_ready: bool = True,
+    geo_contract_version: int = 3,
 ) -> Path:
     root = parent / "foundation"
     root.mkdir(parents=True)
@@ -41,7 +41,7 @@ def _write_foundation_root(
         json.dumps(
             {
                 "readiness_passed": readiness,
-                "upstream_v3_geo_contract_ready": v3_ready,
+                "data_geo_contract_version": geo_contract_version,
                 "generator_config_digest": generator_digest,
                 "target_world_fingerprint": world_fingerprint,
                 "foundation_manifest_sha256": _sha256(manifest_path),

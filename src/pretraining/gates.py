@@ -12,6 +12,7 @@ import torch
 
 from src.foundation_input.manifest import load_manifest
 from src.foundation_input.types import FoundationBatch
+from src.models.adapters import AdapterRegistry
 from src.models.encoder import FoundationModelConfig
 
 from .config import PretrainingConfig, RoutingIds
@@ -39,7 +40,7 @@ def _report(root: Path) -> dict[str, Any]:
         raise ValueError(f"Green SM readiness report must be an object: {path}")
     required = {
         "readiness_passed",
-        "upstream_v3_geo_contract_ready",
+        "data_geo_contract_version",
         "generator_config_digest",
         "target_world_fingerprint",
         "foundation_manifest_sha256",
@@ -49,8 +50,10 @@ def _report(root: Path) -> dict[str, Any]:
         raise ValueError(f"Green SM readiness report missing fields {missing}: {path}")
     if value["readiness_passed"] is not True:
         raise ValueError(f"Green SM readiness report is not ready: {path}")
-    if value["upstream_v3_geo_contract_ready"] is not True:
-        raise RuntimeError(f"Green SM report declares v3 geo contract unavailable: {path}")
+    if value["data_geo_contract_version"] != 3:
+        raise RuntimeError(
+            f"Green SM report does not publish data geo contract v3: {path}"
+        )
     return value
 
 
@@ -81,6 +84,11 @@ def preflight_green_sm(config: PretrainingConfig) -> PreflightResult:
         raise RuntimeError(
             "Runtime FoundationModelConfig lacks geo_modality_id; "
             "merge the v3 adapter routing contract before pretraining"
+        )
+    if not hasattr(AdapterRegistry, "supports_geo_routing"):
+        raise RuntimeError(
+            "Runtime AdapterRegistry lacks geo routing; merge the v3 adapter routing "
+            "contract before pretraining"
         )
     return PreflightResult(
         linked_manifest_sha256=linked_sha,

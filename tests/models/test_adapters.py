@@ -58,7 +58,7 @@ def test_pair_keying_distinguishes_reused_value_ids(batch_factory, model_config)
 def test_registry_routes_categorical_text_and_numeric_mlp_through_distinct_projections(
     model_config,
 ) -> None:
-    config = model_config(modality_vocab_size=4)
+    config = model_config(modality_vocab_size=5)
     registry = AdapterRegistry(config).eval()
     with torch.no_grad():
         for embedding in (
@@ -168,3 +168,32 @@ def test_geo_adapter_returns_zero_for_missing_coordinates() -> None:
     assert output.shape == (1, 2, 8)
     assert torch.isfinite(output).all()
     assert torch.equal(output[:, 1], torch.zeros_like(output[:, 1]))
+
+
+def test_registry_geo_features_change_for_coordinates_and_cell_id(model_config) -> None:
+    config = model_config(geo_modality_id=4)
+    registry = AdapterRegistry(config).eval()
+
+    def batch(*, cell_id: int, coordinates: tuple[float, float]) -> FoundationBatch:
+        return FoundationBatch(
+            input_ids=torch.tensor([[1, cell_id, 2]], dtype=torch.long),
+            key_ids=torch.tensor([[0, 3, 0]], dtype=torch.long),
+            modality_ids=torch.tensor([[0, 4, 0]], dtype=torch.long),
+            source_ids=torch.tensor([[0, 2, 0]], dtype=torch.long),
+            position_ids=torch.zeros((1, 3), dtype=torch.long),
+            time_gap_ids=torch.zeros((1, 3), dtype=torch.long),
+            attention_mask=torch.ones((1, 3), dtype=torch.bool),
+            numeric_values=torch.zeros((1, 3), dtype=torch.float32),
+            numeric_missing_mask=torch.zeros((1, 3), dtype=torch.bool),
+            geo_values=torch.tensor([[[0.0, 0.0], coordinates, [0.0, 0.0]]]),
+            geo_missing_mask=torch.zeros((1, 3), dtype=torch.bool),
+            user_ids=torch.tensor([1], dtype=torch.long),
+            targets={},
+        )
+
+    original = registry(batch(cell_id=9, coordinates=(0.5, -0.5)))
+    changed_coordinates = registry(batch(cell_id=9, coordinates=(0.25, -0.5)))
+    changed_cell = registry(batch(cell_id=10, coordinates=(0.5, -0.5)))
+
+    assert not torch.equal(original[:, 1], changed_coordinates[:, 1])
+    assert not torch.equal(original[:, 1], changed_cell[:, 1])

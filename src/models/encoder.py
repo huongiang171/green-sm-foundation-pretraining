@@ -31,6 +31,7 @@ class FoundationModelConfig:
     categorical_pair_buckets: int = 100_003
     sequence_source_id: int | None = None
     numeric_modality_id: int | None = None
+    geo_modality_id: int | None = None
     default_attention_mode: str = "bidirectional"
 
     def __post_init__(self) -> None:
@@ -76,6 +77,14 @@ class FoundationModelConfig:
                 f"got numeric_modality_id={self.numeric_modality_id}, "
                 f"modality_vocab_size={self.modality_vocab_size}"
             )
+        if self.geo_modality_id is not None and not 0 < self.geo_modality_id < self.modality_vocab_size:
+            raise ValueError(
+                "geo_modality_id must be inside modality vocabulary: "
+                f"got geo_modality_id={self.geo_modality_id}, "
+                f"modality_vocab_size={self.modality_vocab_size}"
+            )
+        if self.geo_modality_id is not None and self.geo_modality_id == self.numeric_modality_id:
+            raise ValueError("geo_modality_id and numeric_modality_id must differ")
         for name in (
             "num_user_buckets",
             "categorical_pair_buckets",
