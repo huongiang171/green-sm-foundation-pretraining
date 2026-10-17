@@ -1,7 +1,4 @@
-from src import __version__
-from . import models
-
-from . import baselines, data, downstream, evaluation
+from src import __version__, baselines, data, downstream, evaluation, models
 
 
 def test_package_skeleton_imports():

@@ -34,3 +34,16 @@ Git. Xem [data/README.md](data/README.md) và [docs/data_schema.md](docs/data_sc
 ## Làm việc nhóm
 
 Xem [CONTRIBUTING.md](CONTRIBUTING.md) trước khi tạo branch hoặc Pull Request.
+
+## Downstream evaluation
+
+Evaluate completed label-free Food or Ads predictions on the linked Green SM corpus without a GPU:
+
+```bash
+python -m src.evaluation evaluate --task food_recommendation --split test --prediction-dir <prediction-dir> --opportunities-root <food-opportunities-root> --output <food-report.json>
+python -m src.evaluation compare --report <baseline-report.json> --report <foundation-report.json> --output <comparison.json>
+```
+
+Foundation Food/Ads artifacts already use `OutputContractV1`. A baseline must also provide
+`evaluation_input_v1.json`; see [docs/evaluation_input_v1.md](docs/evaluation_input_v1.md).
+The CPU-only Kaggle recipe is [notebooks/downstream_evaluation_kaggle.ipynb](notebooks/downstream_evaluation_kaggle.ipynb).
