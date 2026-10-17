@@ -709,6 +709,24 @@ def test_green_sm_validate_binds_the_manifest_selected_last_checkpoint(tmp_path:
     assert report["selected_checkpoint_sha256"] == _sha256(tmp_path / "foundation-package" / "last.pt")
 
 
+def test_green_sm_validate_accepts_published_manifest_without_data_version(tmp_path: Path) -> None:
+    """The immutable published Ads v1 manifest omits an optional data-version field."""
+
+    config = _write_green_sm_handoff_config(tmp_path)
+    manifest_path = tmp_path / "ads" / "manifest.json"
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    manifest.pop("data_version")
+    manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
+    data = dict(config["data"])
+    data["expected_ads_manifest_sha256"] = _sha256(manifest_path)
+    config["data"] = data
+
+    report = ad_optimization.validate_green_sm_ads_data_handoff(config)
+
+    assert report["data_version"] == "green_sm_sim_full_v1"
+    assert report["selected_kind"] == "last"
+
+
 def test_green_sm_validate_rejects_placeholder_selected_checkpoint_sha(tmp_path: Path) -> None:
     """A placeholder must never let a full-corpus Kaggle run reach model construction."""
 

@@ -242,7 +242,8 @@ def validate_green_sm_ads_data_handoff(config: Mapping[str, Any]) -> dict[str, A
         raise AdConfigurationError("Green SM quality report is not bound to the configured Foundation manifest")
     if ads_manifest.get("schema_version") != "green_sm_ads_opportunities_v1":
         raise AdConfigurationError("Ads manifest has unsupported schema_version")
-    if ads_manifest.get("data_version") != "green_sm_sim_full_v1":
+    manifest_data_version = ads_manifest.get("data_version")
+    if manifest_data_version is not None and manifest_data_version != "green_sm_sim_full_v1":
         raise AdConfigurationError("Ads manifest data_version must be green_sm_sim_full_v1")
     if ads_manifest.get("foundation_manifest_sha256") != expected_foundation_sha:
         raise AdConfigurationError("Ads manifest is not linked to the configured Foundation manifest")
