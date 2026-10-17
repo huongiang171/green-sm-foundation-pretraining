@@ -4,6 +4,7 @@ from datetime import datetime, timezone
 
 import pyarrow as pa
 import pyarrow.parquet as pq
+import pytest
 
 from src.downstream.green_sm_ad_optimization import load_green_sm_ads_opportunities
 
@@ -14,7 +15,8 @@ def test_green_sm_ads_bridge_reads_its_own_schema_without_taobao_field_assumptio
         pa.Table.from_pylist([{
             "request_id": "r1", "user_id": "u1", "foundation_sample_id": "foundation:r1",
             "cutoff_timestamp": timestamp, "candidate_id": "campaign1", "split": "validation",
-            "candidate_available_timestamp": timestamp, "candidate_category": "food", "clicked": 1,
+            "candidate_available_timestamp": timestamp, "candidate_category": "food",
+            "candidate_geo_cell": "HCM_Q1", "candidate_lat": 10.77, "candidate_lon": 106.70, "clicked": 1,
             "campaign_id": "campaign1", "placement": "home", "exposure_timestamp": timestamp,
         }]),
         tmp_path / "ads_opportunities.validation.parquet",
@@ -25,6 +27,20 @@ def test_green_sm_ads_bridge_reads_its_own_schema_without_taobao_field_assumptio
     assert rows[0].cate_id == "food"
     assert rows[0].pid == "home"
     assert rows[0].foundation_sample_id == "foundation:r1"
+
+
+def test_green_sm_ads_bridge_rejects_missing_or_nonfinite_candidate_geo(tmp_path) -> None:
+    timestamp = datetime(2026, 10, 1, tzinfo=timezone.utc)
+    row = {
+        "request_id": "r1", "user_id": "u1", "foundation_sample_id": "foundation:r1",
+        "cutoff_timestamp": timestamp, "candidate_id": "campaign1", "split": "validation",
+        "candidate_available_timestamp": timestamp, "candidate_category": "food", "clicked": 1,
+        "campaign_id": "campaign1", "placement": "home", "exposure_timestamp": timestamp,
+    }
+    pq.write_table(pa.Table.from_pylist([row]), tmp_path / "ads_opportunities.validation.parquet")
+
+    with pytest.raises(ValueError, match="candidate_geo_cell"):
+        load_green_sm_ads_opportunities(tmp_path, split="validation")
 
 
 def test_frozen_foundation_keeps_ranker_gradients_enabled() -> None:

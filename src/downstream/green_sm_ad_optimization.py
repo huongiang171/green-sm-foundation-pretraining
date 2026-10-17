@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import math
 from collections.abc import Mapping, Sequence
 from datetime import datetime, timezone
 from pathlib import Path
@@ -41,8 +42,8 @@ def load_green_sm_ads_opportunities(
     rows: list[AdOpportunity] = []
     required = {
         "request_id", "user_id", "foundation_sample_id", "cutoff_timestamp", "candidate_id",
-        "split", "candidate_available_timestamp", "candidate_category", "clicked", "campaign_id",
-        "placement", "exposure_timestamp",
+        "split", "candidate_available_timestamp", "candidate_category", "candidate_geo_cell",
+        "candidate_lat", "candidate_lon", "clicked", "campaign_id", "placement", "exposure_timestamp",
     }
     for raw in pq.read_table(path).to_pylist():
         missing = required - set(raw)
@@ -50,6 +51,11 @@ def load_green_sm_ads_opportunities(
             raise ValueError(f"Green SM Ads opportunity row lacks fields {sorted(missing)}")
         if raw["split"] != split:
             raise ValueError("Green SM Ads parquet split does not match requested split")
+        if not isinstance(raw["candidate_geo_cell"], str) or not raw["candidate_geo_cell"].strip():
+            raise ValueError("Green SM Ads candidate_geo_cell must be non-empty")
+        for field in ("candidate_lat", "candidate_lon"):
+            if isinstance(raw[field], bool) or not isinstance(raw[field], (int, float)) or not math.isfinite(raw[field]):
+                raise ValueError(f"Green SM Ads {field} must be finite")
         rows.append(AdOpportunity.from_mapping({
             "request_id": raw["request_id"], "user_id": raw["user_id"],
             "foundation_sample_id": raw["foundation_sample_id"],

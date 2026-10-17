@@ -363,3 +363,55 @@ def test_selected_foundation_handoff_uses_checkpoint_manifest_not_best_filename(
     assert handoff.checkpoint_path == checkpoint
     assert handoff.selected_kind == "last"
     assert handoff.vocabulary_path == vocabulary
+
+
+def test_green_sm_ads_handoff_rejects_nonpassing_quality_report(tmp_path: Path) -> None:
+    from src.downstream.ad_optimization import validate_green_sm_ads_data_handoff
+
+    ads_root = tmp_path / "ads"
+    foundation_root = tmp_path / "foundation"
+    report_root = tmp_path / "reports"
+    ads_root.mkdir(); foundation_root.mkdir(); report_root.mkdir()
+    foundation_manifest = foundation_root / "manifest.json"
+    foundation_manifest.write_text('{"schema_version":"omnibehavior_pretraining_v2","status":"complete"}', encoding="utf-8")
+    files = {}
+    for split in ("train", "validation", "test"):
+        path = ads_root / f"ads_opportunities.{split}.parquet"
+        path.write_bytes(split.encode())
+        files[split] = {"file": path.name, "sha256": _sha256(path), "rows": 1}
+    ads_manifest = ads_root / "manifest.json"
+    ads_manifest.write_text(json.dumps({
+        "schema_version": "green_sm_ads_opportunities_v1",
+        "foundation_manifest_sha256": _sha256(foundation_manifest), "files": files,
+    }), encoding="utf-8")
+    report = report_root / "data_quality_report.json"
+    report.write_text(json.dumps({"readiness_passed": False, "foundation_manifest_sha256": _sha256(foundation_manifest)}), encoding="utf-8")
+
+    with pytest.raises(ValueError, match="quality report"):
+        validate_green_sm_ads_data_handoff({
+            "task": "ad_optimization", "freeze_foundation": True,
+            "data": {
+                "data_version": "green_sm_sim_full_v1", "corpus": "linked",
+                "opportunities_root": str(ads_root), "manifest_path": str(ads_manifest),
+                "foundation_root": str(foundation_root), "foundation_manifest_path": str(foundation_manifest),
+                "quality_report_path": str(report),
+                "expected_ads_manifest_sha256": _sha256(ads_manifest),
+                "expected_foundation_manifest_sha256": _sha256(foundation_manifest),
+            },
+        })
+
+
+def test_cli_validate_uses_green_sm_handoff(monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
+    """The production CLI exposes a Green SM validate mode, not Taobao flags."""
+
+    monkeypatch.setattr(ad_optimization, "load_ad_optimization_config", lambda _: {"task": "ad_optimization"})
+    monkeypatch.setattr(
+        ad_optimization,
+        "validate_green_sm_ads_data_handoff",
+        lambda _: {"data_version": "green_sm_sim_full_v1", "ads_manifest_sha256": "a" * 64},
+    )
+
+    exit_code = ad_optimization.main(["--config", "unused.yaml", "--mode", "validate"])
+
+    assert exit_code == 0
+    assert json.loads(capsys.readouterr().out)["status"] == "ads_data_handoff_valid"

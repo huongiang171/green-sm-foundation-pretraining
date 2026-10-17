@@ -3,10 +3,14 @@
 from __future__ import annotations
 
 import argparse
+import copy
 import hashlib
 import json
+import os
+import random
 import re
 import sys
+import tempfile
 from collections import defaultdict
 from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass
@@ -19,11 +23,13 @@ import yaml
 from torch import nn
 from torch.nn import functional as F
 
+from src.contracts.output import OutputContractV1, OutputPaths
 from src.foundation_input.dataset import DatasetConfig, FoundationPretrainDataset, encode_sample
 from src.foundation_input.loader import iter_normalized_samples
 from src.foundation_input.tokenizer import TokenizerConfig
 from src.foundation_input.types import EncodedSample, FoundationBatch
 from src.foundation_input.vocab import VocabularyArtifacts
+from src.training.checkpoint import load_foundation_checkpoint
 
 SPLITS = frozenset({"train", "validation", "test"})
 VOCABULARY_FIELDS = frozenset({"cate_id", "pid"})
@@ -200,6 +206,56 @@ def validate_ads_data_handoff(config: Mapping[str, Any]) -> dict[str, Any]:
     }
 
 
+def validate_green_sm_ads_data_handoff(config: Mapping[str, Any]) -> dict[str, Any]:
+    """Validate the immutable full linked Green SM Ads handoff before training."""
+
+    if config.get("task") != "ad_optimization" or config.get("freeze_foundation") is not True:
+        raise AdConfigurationError("Green SM Ads requires task='ad_optimization' and freeze_foundation=true")
+    data = _require_mapping(config, "data")
+    if _require_text(data, "data_version", prefix="config.data") != "green_sm_sim_full_v1":
+        raise AdConfigurationError("Green SM Ads requires data_version='green_sm_sim_full_v1'")
+    if _require_text(data, "corpus", prefix="config.data") != "linked":
+        raise AdConfigurationError("Green SM Ads requires data.corpus='linked'")
+    ads_root = Path(_require_text(data, "opportunities_root", prefix="config.data"))
+    foundation_root = Path(_require_text(data, "foundation_root", prefix="config.data"))
+    ads_manifest_path = Path(_require_text(data, "manifest_path", prefix="config.data"))
+    foundation_manifest_path = Path(_require_text(data, "foundation_manifest_path", prefix="config.data"))
+    report_path = Path(_require_text(data, "quality_report_path", prefix="config.data"))
+    expected_ads_sha = _require_text(data, "expected_ads_manifest_sha256", prefix="config.data")
+    expected_foundation_sha = _require_text(data, "expected_foundation_manifest_sha256", prefix="config.data")
+    _verify_sha256(ads_manifest_path, expected_ads_sha, label="Ads manifest")
+    _verify_sha256(foundation_manifest_path, expected_foundation_sha, label="Foundation manifest")
+    ads_manifest = _read_json(ads_manifest_path, label="Ads manifest")
+    report = _read_json(report_path, label="Green SM data quality report")
+    if report.get("readiness_passed") is not True:
+        raise AdConfigurationError("Green SM quality report must have readiness_passed=true")
+    if report.get("foundation_manifest_sha256") != expected_foundation_sha:
+        raise AdConfigurationError("Green SM quality report is not bound to the configured Foundation manifest")
+    if ads_manifest.get("schema_version") != "green_sm_ads_opportunities_v1":
+        raise AdConfigurationError("Ads manifest has unsupported schema_version")
+    if ads_manifest.get("foundation_manifest_sha256") != expected_foundation_sha:
+        raise AdConfigurationError("Ads manifest is not linked to the configured Foundation manifest")
+    files = ads_manifest.get("files")
+    if not isinstance(files, Mapping) or set(files) != SPLITS:
+        raise AdConfigurationError("Ads manifest must contain exactly train, validation, and test files")
+    for split in sorted(SPLITS):
+        entry = files[split]
+        if not isinstance(entry, Mapping):
+            raise AdConfigurationError(f"Ads manifest files.{split} must be a mapping")
+        filename = _require_text(entry, "file", prefix=f"Ads manifest files.{split}")
+        if Path(filename).name != filename:
+            raise AdConfigurationError(f"Ads manifest files.{split}.file must be a filename")
+        checksum = _require_text(entry, "sha256", prefix=f"Ads manifest files.{split}")
+        _verify_sha256(ads_root / filename, checksum, label=f"Ads {split} parquet")
+    if not ads_root.is_dir() or not foundation_root.is_dir():
+        raise AdConfigurationError("configured opportunities_root and foundation_root must be directories")
+    return {
+        "data_version": "green_sm_sim_full_v1",
+        "ads_manifest_sha256": expected_ads_sha,
+        "foundation_manifest_sha256": expected_foundation_sha,
+    }
+
+
 def validate_member3_handoff(config: Mapping[str, Any]) -> None:
     """Load only the public checksum/identity-verified frozen Foundation artifact."""
 
@@ -225,47 +281,55 @@ def validate_member3_handoff(config: Mapping[str, Any]) -> None:
 
 
 def main(argv: Sequence[str] | None = None) -> int:
-    """CLI entrypoint; it never reports success for an unimplemented train run."""
+    """Run the Green SM Ads validation, training, or prediction lifecycle."""
 
-    parser = argparse.ArgumentParser(description="Validate or train frozen-Foundation Ads ranking.")
-    parser.add_argument("--config", required=True, help="Path to ad_optimization YAML config.")
-    parser.add_argument(
-        "--validate-data",
-        action="store_true",
-        help="Validate only immutable Data-team artifacts and exit.",
-    )
-    parser.add_argument(
-        "--preflight",
-        action="store_true",
-        help="Validate data plus Member 3 checkpoint/output-contract handoff; does not train.",
-    )
+    parser = argparse.ArgumentParser(description="Green SM frozen-Foundation Ads CTR ranking")
+    parser.add_argument("--config", required=True, help="Ads YAML configuration")
+    parser.add_argument("--mode", choices=("validate", "train", "predict"))
+    parser.add_argument("--split", choices=("validation", "test"))
+    parser.add_argument("--validate-data", action="store_true", help=argparse.SUPPRESS)
+    parser.add_argument("--preflight", action="store_true", help=argparse.SUPPRESS)
     args = parser.parse_args(argv)
-    if args.validate_data and args.preflight:
-        parser.error("--validate-data and --preflight cannot be used together")
-
-    try:
-        config = load_ad_optimization_config(args.config)
-        report = validate_ads_data_handoff(config)
-        if args.validate_data:
-            print(json.dumps({"status": "data_handoff_valid", **report}, sort_keys=True))
-            return 0
-        validate_member3_handoff(config)
-    except UpstreamHandoffError as error:
-        print(f"upstream handoff blocked: {error}", file=sys.stderr)
-        return 3
-    except AdConfigurationError as error:
-        print(f"configuration error: {error}", file=sys.stderr)
-        return 2
-
-    if args.preflight:
+    if args.validate_data or args.preflight:
+        try:
+            config = load_ad_optimization_config(args.config)
+            report = validate_ads_data_handoff(config)
+            if args.validate_data:
+                print(json.dumps({"status": "data_handoff_valid", **report}, sort_keys=True))
+                return 0
+            validate_member3_handoff(config)
+        except UpstreamHandoffError as error:
+            print(f"upstream handoff blocked: {error}", file=sys.stderr)
+            return 3
+        except AdConfigurationError as error:
+            print(f"configuration error: {error}", file=sys.stderr)
+            return 2
         print(json.dumps({"status": "preflight_valid", **report}, sort_keys=True))
         return 0
-    print(
-        "upstream handoff blocked: training runner is not available until Member 3 delivers "
-        "the versioned checkpoint loader and Output Contract v1.",
-        file=sys.stderr,
-    )
-    return 3
+    if args.mode is None:
+        parser.error("--mode is required")
+    try:
+        config = load_ad_optimization_config(args.config)
+        report = validate_green_sm_ads_data_handoff(config)
+    except AdConfigurationError as error:
+        print(f"Ads configuration error: {error}", file=sys.stderr)
+        return 2
+    if args.mode == "validate":
+        print(json.dumps({"status": "ads_data_handoff_valid", **report}, sort_keys=True))
+        return 0
+    try:
+        if args.mode == "train":
+            result = run_ads_training(config)
+            print(json.dumps({"status": "ads_training_complete", **result}, sort_keys=True))
+            return 0
+        if args.split is None:
+            parser.error("--split is required when --mode predict")
+        result = run_ads_prediction(config, split=args.split)
+        print(json.dumps({"status": "ads_prediction_exported", "predictions": str(result.predictions)}))
+        return 0
+    except (AdConfigurationError, ValueError) as error:
+        print(f"Ads configuration error: {error}", file=sys.stderr)
+        return 2
 
 
 def _text(value: Any, *, field: str, request_id: str = "<unknown>") -> str:
@@ -720,5 +784,154 @@ def load_encoded_foundation_samples_for_ads(
     return found
 
 
-if __name__ == "__main__":  # pragma: no cover - exercised through the module CLI
+def _to_device_ad_batch(batch: AdBatch, device: torch.device) -> AdBatch:
+    copied = copy.copy(batch)
+    foundation = copy.copy(batch.foundation_batch)
+    for name, value in vars(foundation).items():
+        if isinstance(value, torch.Tensor):
+            setattr(foundation, name, value.to(device))
+        elif name == "targets" and isinstance(value, dict):
+            foundation.targets = {key: tensor.to(device) for key, tensor in value.items()}
+    copied.foundation_batch = foundation
+    for name in ("candidate_hash_ids", "campaign_hash_ids", "category_ids", "placement_ids", "clicked", "candidate_mask"):
+        setattr(copied, name, getattr(batch, name).to(device))
+    return copied
+
+
+def _atomic_json(path: Path, value: Mapping[str, Any]) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with tempfile.NamedTemporaryFile(mode="w", encoding="utf-8", dir=path.parent, delete=False) as handle:
+        json.dump(value, handle, sort_keys=True, indent=2)
+        temporary = Path(handle.name)
+    os.replace(temporary, path)
+
+
+def _atomic_torch_save(path: Path, value: Mapping[str, Any]) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with tempfile.NamedTemporaryFile(dir=path.parent, delete=False) as handle:
+        temporary = Path(handle.name)
+    torch.save(dict(value), temporary)
+    os.replace(temporary, path)
+
+
+def _ads_settings(config: Mapping[str, Any]) -> tuple[Mapping[str, Any], Mapping[str, Any], Mapping[str, Any]]:
+    model = _require_mapping(config, "model")
+    training = _require_mapping(config, "training")
+    ranker = _require_mapping(config, "ranker")
+    for key in ("candidate_hash_buckets", "campaign_hash_buckets"):
+        if not isinstance(model.get(key), int) or int(model[key]) < 3:
+            raise AdConfigurationError(f"config.model.{key} must be an integer >= 3")
+    for key in ("batch_size", "epochs"):
+        if not isinstance(training.get(key), int) or int(training[key]) < 1:
+            raise AdConfigurationError(f"config.training.{key} must be a positive integer")
+    if not isinstance(training.get("learning_rate"), (int, float)) or float(training["learning_rate"]) <= 0:
+        raise AdConfigurationError("config.training.learning_rate must be positive")
+    return model, training, ranker
+
+
+def _load_ads_foundation(config: Mapping[str, Any], *, device: str) -> tuple[Any, SelectedFoundationHandoff]:
+    checkpoint = _require_mapping(config, "checkpoint")
+    handoff = resolve_selected_foundation_handoff(_require_text(checkpoint, "package_root", prefix="config.checkpoint"))
+    expected = _require_text(checkpoint, "expected_selected_checkpoint_sha256", prefix="config.checkpoint")
+    if handoff.manifest["checkpoint_sha256"] != expected:
+        raise AdConfigurationError("selected Foundation checkpoint SHA does not match config")
+    return load_foundation_checkpoint(handoff.checkpoint_path, handoff.selection_manifest_path, map_location=device), handoff
+
+
+def _load_ads_rows_and_batches(config: Mapping[str, Any], *, split: str, features: Mapping[str, Mapping[str, int]] | None = None) -> tuple[tuple[AdOpportunity, ...], tuple[AdBatch, ...], dict[str, dict[str, int]]]:
+    from src.downstream.green_sm_ad_optimization import (
+        load_green_sm_ads_opportunities,
+        resolve_green_sm_ads_samples,
+    )
+
+    data = _require_mapping(config, "data")
+    model, training, _ = _ads_settings(config)
+    rows = load_green_sm_ads_opportunities(_require_text(data, "opportunities_root", prefix="config.data"), split=split)
+    vocabulary_path = resolve_selected_foundation_handoff(_require_text(_require_mapping(config, "checkpoint"), "package_root", prefix="config.checkpoint")).vocabulary_path
+    samples = resolve_green_sm_ads_samples(rows, foundation_root=_require_text(data, "foundation_root", prefix="config.data"), vocabulary_path=vocabulary_path, split=split, max_tokens=int(data.get("max_tokens", 256)))
+    fitted = dict(features or {})
+    if not fitted:
+        if split != "train":
+            raise AdConfigurationError("Ads feature artifacts must be supplied for evaluation")
+        fitted = {"category": fit_train_vocabulary(rows, field="cate_id"), "placement": fit_train_vocabulary(rows, field="pid")}
+    batches = build_ad_batches(rows, encoded_samples_by_id=samples, category_vocabulary=fitted["category"], placement_vocabulary=fitted["placement"], candidate_hash_buckets=int(model["candidate_hash_buckets"]), campaign_hash_buckets=int(model["campaign_hash_buckets"]), batch_size=int(training["batch_size"]))
+    return rows, batches, fitted
+
+
+def _ads_logits(embedder: Any, ranker: AdRanker, batch: AdBatch) -> torch.Tensor:
+    with torch.no_grad():
+        embeddings = embedder.embed_users(batch.foundation_batch)
+    return ranker(embeddings["long_term"], embeddings["short_term"], candidate_hash_ids=batch.candidate_hash_ids, campaign_hash_ids=batch.campaign_hash_ids, category_ids=batch.category_ids, placement_ids=batch.placement_ids)
+
+
+def _mean_ads_loss(embedder: Any, ranker: AdRanker, batches: Sequence[AdBatch], device: torch.device) -> float:
+    ranker.eval(); embedder.eval(); weighted = 0.0; count = 0
+    with torch.no_grad():
+        for batch in batches:
+            moved = _to_device_ad_batch(batch, device)
+            loss, rows = masked_binary_cross_entropy(_ads_logits(embedder, ranker, moved), moved.clicked, moved.candidate_mask)
+            weighted += float(loss.item()) * rows; count += rows
+    return weighted / count
+
+
+def run_ads_training(config: Mapping[str, Any]) -> dict[str, Any]:
+    handoff = validate_green_sm_ads_data_handoff(config)
+    model, training, ranker_settings = _ads_settings(config)
+    seed = config.get("seed")
+    if not isinstance(seed, int): raise AdConfigurationError("config.seed must be an integer")
+    random.seed(seed); torch.manual_seed(seed)
+    device = str(training.get("device", "cpu"))
+    if device.startswith("cuda") and not torch.cuda.is_available(): raise AdConfigurationError("CUDA was requested but is unavailable")
+    embedder, foundation = _load_ads_foundation(config, device=device)
+    train_rows, train_batches, features = _load_ads_rows_and_batches(config, split="train")
+    validation_rows, validation_batches, _ = _load_ads_rows_and_batches(config, split="validation", features=features)
+    run_dir = Path(_require_text(ranker_settings, "run_dir", prefix="config.ranker"))
+    if run_dir.exists() and any(run_dir.iterdir()): raise AdConfigurationError(f"Ads run directory must be new and empty: {run_dir}")
+    d_model = int(embedder.model.config.d_model)
+    ranker = AdRanker(candidate_buckets=int(model["candidate_hash_buckets"]), campaign_buckets=int(model["campaign_hash_buckets"]), num_categories=len(features["category"]), num_placements=len(features["placement"]), d_model=d_model, dropout=float(model.get("dropout", 0.0))).to(device)
+    embedder.to(device).eval()
+    for parameter in embedder.parameters(): parameter.requires_grad_(False)
+    optimizer = torch.optim.AdamW(ranker.parameters(), lr=float(training["learning_rate"]), weight_decay=float(training.get("weight_decay", 0.0)))
+    _atomic_json(run_dir / "feature_artifacts.json", features)
+    metrics: list[dict[str, float | int]] = []; best = float("inf"); best_epoch = 0
+    for epoch in range(1, int(training["epochs"]) + 1):
+        ranker.train(); losses: list[float] = []
+        for batch in train_batches:
+            moved = _to_device_ad_batch(batch, torch.device(device)); optimizer.zero_grad(set_to_none=True)
+            loss, _ = masked_binary_cross_entropy(_ads_logits(embedder, ranker, moved), moved.clicked, moved.candidate_mask)
+            loss.backward(); optimizer.step(); losses.append(float(loss.item()))
+        validation = _mean_ads_loss(embedder, ranker, validation_batches, torch.device(device))
+        metrics.append({"epoch": epoch, "train_bce": sum(losses) / len(losses), "validation_bce": validation})
+        payload = {"ranker_config": {"candidate_buckets": int(model["candidate_hash_buckets"]), "campaign_buckets": int(model["campaign_hash_buckets"]), "num_categories": len(features["category"]), "num_placements": len(features["placement"]), "d_model": d_model, "dropout": float(model.get("dropout", 0.0))}, "ranker_state_dict": ranker.state_dict(), "epoch": epoch}
+        _atomic_torch_save(run_dir / "last.pt", payload)
+        if validation < best: best = validation; best_epoch = epoch; _atomic_torch_save(run_dir / "best.pt", payload)
+    (run_dir / "train_metrics.jsonl").write_text("".join(json.dumps(row) + "\n" for row in metrics), encoding="utf-8")
+    manifest = {**handoff, "schema_version": "green_sm_ads_ranker_v1", "run_id": run_dir.name, "seed": seed, "selected_checkpoint_sha256": foundation.manifest["checkpoint_sha256"], "vocabulary_sha256": foundation.manifest["vocabulary_sha256"], "feature_artifacts": "feature_artifacts.json", "feature_artifacts_sha256": _sha256(run_dir / "feature_artifacts.json"), "best_checkpoint": "best.pt", "best_checkpoint_sha256": _sha256(run_dir / "best.pt"), "last_checkpoint": "last.pt", "last_checkpoint_sha256": _sha256(run_dir / "last.pt"), "ranker_config": payload["ranker_config"], "best_epoch": best_epoch, "best_validation_bce": best}
+    _atomic_json(run_dir / "run_manifest.json", manifest)
+    return {"run_dir": str(run_dir), "best_epoch": best_epoch, "best_validation_bce": best, "train_requests": len(_group_requests(train_rows)), "validation_requests": len(_group_requests(validation_rows))}
+
+
+def run_ads_prediction(config: Mapping[str, Any], *, split: Literal["validation", "test"]) -> OutputPaths:
+    handoff = validate_green_sm_ads_data_handoff(config)
+    _, training, ranker_settings = _ads_settings(config); device = str(training.get("device", "cpu"))
+    embedder, foundation = _load_ads_foundation(config, device=device)
+    run_dir = Path(_require_text(ranker_settings, "run_dir", prefix="config.ranker")); manifest = _read_json(run_dir / "run_manifest.json", label="Ads run manifest")
+    expected = _require_text(ranker_settings, "expected_run_manifest_sha256", prefix="config.ranker")
+    _verify_sha256(run_dir / "run_manifest.json", expected, label="Ads run manifest")
+    if manifest.get("selected_checkpoint_sha256") != foundation.manifest["checkpoint_sha256"]: raise AdConfigurationError("Ads run used a different Foundation checkpoint")
+    features = _read_json(run_dir / "feature_artifacts.json", label="Ads feature artifacts")
+    rows, batches, _ = _load_ads_rows_and_batches(config, split=split, features=features)
+    payload = torch.load(run_dir / "best.pt", map_location=device, weights_only=False); ranker = AdRanker(**payload["ranker_config"]).to(device); ranker.load_state_dict(payload["ranker_state_dict"]); ranker.eval()
+    from src.downstream.green_sm_ad_optimization import (
+        expected_green_sm_candidates,
+        prediction_rows_from_batch,
+    )
+    predictions = []
+    with torch.no_grad():
+        for batch in batches:
+            moved = _to_device_ad_batch(batch, torch.device(device)); logits = _ads_logits(embedder, ranker, moved); predictions.extend(prediction_rows_from_batch(moved, score_probabilities(logits, moved.candidate_mask).cpu(), split=split))
+    return OutputContractV1.write_predictions(predictions, expected_candidates=expected_green_sm_candidates(rows, data_version=handoff["data_version"], source_checksums={"ads_manifest_sha256": handoff["ads_manifest_sha256"], "foundation_manifest_sha256": handoff["foundation_manifest_sha256"]}), output_dir=run_dir / "predictions" / split, split=split, run_metadata={"selected_checkpoint_sha256": foundation.manifest["checkpoint_sha256"], "vocabulary_sha256": foundation.manifest["vocabulary_sha256"], "foundation_manifest_sha256": handoff["foundation_manifest_sha256"], "ads_manifest_sha256": handoff["ads_manifest_sha256"], "config_digest": "runtime", "seed": config["seed"], "run_id": manifest["run_id"], "score_semantics": "probability"})
+
+
+if __name__ == "__main__":  # pragma: no cover
     raise SystemExit(main())
