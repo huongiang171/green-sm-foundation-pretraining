@@ -6,6 +6,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 from types import SimpleNamespace
 
+import pyarrow as pa
+import pyarrow.parquet as pq
 import pytest
 import torch
 
@@ -145,6 +147,91 @@ def test_native_green_sm_opportunity_rejects_non_finite_location() -> None:
     row_type = ad_optimization.GreenSmAdsOpportunity
     with pytest.raises(ValueError, match="candidate_lat"):
         row_type.from_mapping(_green_sm_opportunity_row(candidate_lat=float("nan")), require_label=True)
+
+
+def test_native_feature_artifacts_fit_train_only_category_placement_and_geo_vocabularies() -> None:
+    """Fitting validation values would leak future catalog metadata into the ranker."""
+
+    row_type = ad_optimization.GreenSmAdsOpportunity
+    artifacts_type = ad_optimization.AdsFeatureArtifacts
+    train_rows = (
+        row_type.from_mapping(_green_sm_opportunity_row(), require_label=True),
+        row_type.from_mapping(
+            _green_sm_opportunity_row(
+                request_id="ads:train:2",
+                candidate_id="campaign-creative-2",
+                candidate_category="mobility",
+                placement="search",
+                candidate_geo_cell="HCM_Q3",
+            ),
+            require_label=True,
+        ),
+    )
+
+    artifacts = artifacts_type.fit(train_rows)
+
+    assert artifacts.category["<PAD>"] == 0
+    assert artifacts.placement["<UNK>"] == 1
+    assert artifacts.geo_cell["HCM_Q1"] == 2
+    assert artifacts.encode("category", "food") != artifacts.encode("category", "future-only")
+    assert artifacts.encode("geo_cell", "future-only") == 1
+
+
+def test_native_prediction_batch_omits_labels_and_preserves_real_candidate_mask() -> None:
+    """Prediction must score the same candidate tensor even when labels are unavailable."""
+
+    row_type = ad_optimization.GreenSmAdsOpportunity
+    train_rows = (
+        row_type.from_mapping(_green_sm_opportunity_row(), require_label=True),
+        row_type.from_mapping(
+            _green_sm_opportunity_row(
+                request_id="ads:train:2", foundation_sample_id="green-sm:sample:2",
+                candidate_id="campaign-creative-2", campaign_id="campaign-2",
+            ),
+            require_label=True,
+        ),
+    )
+    test_rows = tuple(
+        row_type.from_mapping(
+            _green_sm_opportunity_row(
+                request_id="ads:test:1", split="test", foundation_sample_id="green-sm:sample:3",
+                candidate_id=f"campaign-creative-{index}", clicked=index % 2,
+            ),
+            require_label=False,
+        )
+        for index in (3, 4)
+    )
+    artifacts = ad_optimization.AdsFeatureArtifacts.fit(train_rows)
+
+    batches = ad_optimization.build_green_sm_ads_batches(
+        test_rows,
+        encoded_samples_by_id={"green-sm:sample:3": _encoded("green-sm:sample:3", "u001")},
+        artifacts=artifacts,
+        candidate_hash_buckets=97,
+        campaign_hash_buckets=97,
+        batch_size=1,
+    )
+
+    assert batches[0].labels is None
+    assert batches[0].candidate_mask.tolist() == [[True, True]]
+    assert batches[0].geo_cell_ids.tolist()[0][0] == artifacts.encode("geo_cell", "HCM_Q1")
+    assert batches[0].candidate_hash_ids.tolist()[0][0] == ad_optimization.stable_green_sm_hash_id(
+        "candidate_id", "campaign-creative-3", bucket_count=97
+    )
+
+
+def test_native_loader_does_not_retain_clicked_for_test_inference(tmp_path: Path) -> None:
+    """An inference loader reading clicked would allow accidental test-label leakage."""
+
+    root = tmp_path / "ads_opportunities"
+    root.mkdir()
+    row = _green_sm_opportunity_row(split="test", clicked=1)
+    pq.write_table(pa.Table.from_pylist([row]), root / "ads_opportunities.test.parquet")
+
+    rows = ad_optimization.load_green_sm_ads_opportunities(root, split="test", require_labels=False)
+
+    assert len(rows) == 1
+    assert rows[0].clicked is None
 
 
 def _encoded(sample_id: str = "sample-1", user_id: str = "user-1") -> EncodedSample:

@@ -19,6 +19,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, Literal
 
+import pyarrow as pa
 import pyarrow.parquet as pq
 import torch
 import yaml
@@ -454,6 +455,216 @@ class GreenSmAdsOpportunity:
             split=values["split"],
             clicked=clicked,
         )
+
+
+def validate_green_sm_opportunities(
+    rows: Iterable[GreenSmAdsOpportunity], *, expected_split: str | None = None
+) -> tuple[GreenSmAdsOpportunity, ...]:
+    """Validate immutable native candidate sets without rewriting their order or labels."""
+
+    validated = tuple(rows)
+    if expected_split is not None and expected_split not in SPLITS:
+        raise ValueError(f"expected_split must be one of {sorted(SPLITS)}, got {expected_split!r}")
+    by_request: dict[str, GreenSmAdsOpportunity] = {}
+    seen_pairs: set[tuple[str, str]] = set()
+    for row in validated:
+        if expected_split is not None and row.split != expected_split:
+            raise ValueError(
+                f"request_id={row.request_id!r}: split {row.split!r} does not match {expected_split!r}"
+            )
+        reference = by_request.setdefault(row.request_id, row)
+        for field in ("user_id", "foundation_sample_id", "cutoff_timestamp", "split"):
+            if getattr(reference, field) != getattr(row, field):
+                raise ValueError(f"request_id={row.request_id!r}: inconsistent {field}")
+        pair = (row.request_id, row.candidate_id)
+        if pair in seen_pairs:
+            raise ValueError(
+                f"duplicate candidate in request_id={row.request_id!r}: {row.candidate_id!r}"
+            )
+        seen_pairs.add(pair)
+    return tuple(sorted(validated, key=lambda row: (row.request_id, row.candidate_id)))
+
+
+_GREEN_SM_ADS_FIELDS = (
+    "request_id",
+    "user_id",
+    "foundation_sample_id",
+    "cutoff_timestamp",
+    "candidate_id",
+    "campaign_id",
+    "candidate_category",
+    "placement",
+    "candidate_geo_cell",
+    "candidate_lat",
+    "candidate_lon",
+    "candidate_available_timestamp",
+    "exposure_timestamp",
+    "split",
+)
+
+
+def load_green_sm_ads_opportunities(
+    root: str | Path, *, split: Literal["train", "validation", "test"], require_labels: bool
+) -> tuple[GreenSmAdsOpportunity, ...]:
+    """Load one native split, deliberately excluding test labels at inference."""
+
+    if split not in SPLITS:
+        raise ValueError("split must be train, validation, or test")
+    path = Path(root) / f"ads_opportunities.{split}.parquet"
+    if not path.is_file():
+        raise ValueError(f"Green SM Ads opportunity file does not exist: {path}")
+    columns = [*_GREEN_SM_ADS_FIELDS, *(("clicked",) if require_labels else ())]
+    try:
+        raw_rows = pq.read_table(path, columns=columns).to_pylist()
+    except (pa.ArrowInvalid, pa.ArrowNotImplementedError, KeyError) as error:
+        raise ValueError(f"Green SM Ads opportunity file has missing required fields: {path}") from error
+    rows = tuple(
+        GreenSmAdsOpportunity.from_mapping(row, require_label=require_labels)
+        for row in raw_rows
+    )
+    return validate_green_sm_opportunities(rows, expected_split=split)
+
+
+def _fit_native_vocabulary(
+    rows: Sequence[GreenSmAdsOpportunity], field: Literal["candidate_category", "placement", "candidate_geo_cell"]
+) -> dict[str, int]:
+    values = sorted({str(getattr(row, field)) for row in validate_green_sm_opportunities(rows, expected_split="train")})
+    return {"<PAD>": 0, "<UNK>": 1, **{value: index + 2 for index, value in enumerate(values)}}
+
+
+@dataclass(frozen=True)
+class AdsFeatureArtifacts:
+    """Train-fitted categorical metadata required to score a Green SM candidate."""
+
+    category: Mapping[str, int]
+    placement: Mapping[str, int]
+    geo_cell: Mapping[str, int]
+
+    @classmethod
+    def fit(cls, rows: Sequence[GreenSmAdsOpportunity]) -> AdsFeatureArtifacts:
+        return cls(
+            category=_fit_native_vocabulary(rows, "candidate_category"),
+            placement=_fit_native_vocabulary(rows, "placement"),
+            geo_cell=_fit_native_vocabulary(rows, "candidate_geo_cell"),
+        )
+
+    def encode(self, field: Literal["category", "placement", "geo_cell"], value: str) -> int:
+        vocabulary = getattr(self, field)
+        return int(vocabulary.get(value, vocabulary["<UNK>"]))
+
+
+def stable_green_sm_hash_id(field_name: str, value: str, *, bucket_count: int) -> int:
+    """Return a deterministic native Ads ID while reserving PAD and UNK."""
+
+    if bucket_count < 3:
+        raise ValueError("bucket_count must reserve PAD=0 and UNK=1")
+    if not value:
+        return 1
+    digest = hashlib.sha256(f"green-sm-ads-v1\0{field_name}\0{value}".encode()).digest()
+    return 2 + int.from_bytes(digest[:8], "big") % (bucket_count - 2)
+
+
+@dataclass
+class GreenSmAdsBatch:
+    """Request-major native candidates; labels are intentionally absent at inference."""
+
+    foundation_batch: FoundationBatch
+    candidate_hash_ids: torch.LongTensor
+    campaign_hash_ids: torch.LongTensor
+    category_ids: torch.LongTensor
+    placement_ids: torch.LongTensor
+    geo_cell_ids: torch.LongTensor
+    labels: torch.FloatTensor | None
+    candidate_mask: torch.BoolTensor
+    opportunities: tuple[tuple[GreenSmAdsOpportunity, ...], ...]
+
+
+def _group_green_sm_requests(
+    rows: Sequence[GreenSmAdsOpportunity],
+) -> tuple[tuple[GreenSmAdsOpportunity, ...], ...]:
+    grouped: dict[str, list[GreenSmAdsOpportunity]] = defaultdict(list)
+    for row in rows:
+        grouped[row.request_id].append(row)
+    return tuple(tuple(grouped[key]) for key in sorted(grouped))
+
+
+def build_green_sm_ads_batches(
+    rows: Sequence[GreenSmAdsOpportunity],
+    *,
+    encoded_samples_by_id: Mapping[str, EncodedSample],
+    artifacts: AdsFeatureArtifacts,
+    candidate_hash_buckets: int,
+    campaign_hash_buckets: int,
+    batch_size: int,
+) -> tuple[GreenSmAdsBatch, ...]:
+    """Build native request batches while keeping test labels outside inference tensors."""
+
+    if batch_size <= 0:
+        raise ValueError("batch_size must be positive")
+    validated = validate_green_sm_opportunities(rows)
+    has_labels = {row.clicked is not None for row in validated}
+    if len(has_labels) > 1:
+        raise ValueError("native Ads batch cannot mix labeled and unlabeled opportunities")
+    batches: list[GreenSmAdsBatch] = []
+    grouped = _group_green_sm_requests(validated)
+    for offset in range(0, len(grouped), batch_size):
+        requests = grouped[offset : offset + batch_size]
+        samples: list[EncodedSample] = []
+        for request in requests:
+            reference = request[0]
+            sample = encoded_samples_by_id.get(reference.foundation_sample_id)
+            if sample is None:
+                raise ValueError(
+                    f"request_id={reference.request_id!r}: missing foundation_sample_id "
+                    f"{reference.foundation_sample_id!r}"
+                )
+            samples.append(sample)
+        from src.foundation_input.dataset import foundation_collate
+
+        foundation_batch = foundation_collate(samples)
+        width = max(len(request) for request in requests)
+        shape = (len(requests), width)
+        candidate_hash_ids = torch.zeros(shape, dtype=torch.long)
+        campaign_hash_ids = torch.zeros(shape, dtype=torch.long)
+        category_ids = torch.zeros(shape, dtype=torch.long)
+        placement_ids = torch.zeros(shape, dtype=torch.long)
+        geo_cell_ids = torch.zeros(shape, dtype=torch.long)
+        candidate_mask = torch.zeros(shape, dtype=torch.bool)
+        labels = torch.zeros(shape, dtype=torch.float32) if has_labels == {True} else None
+        for request_index, request in enumerate(requests):
+            for candidate_index, row in enumerate(request):
+                candidate_hash_ids[request_index, candidate_index] = stable_green_sm_hash_id(
+                    "candidate_id", row.candidate_id, bucket_count=candidate_hash_buckets
+                )
+                campaign_hash_ids[request_index, candidate_index] = stable_green_sm_hash_id(
+                    "campaign_id", row.campaign_id, bucket_count=campaign_hash_buckets
+                )
+                category_ids[request_index, candidate_index] = artifacts.encode(
+                    "category", row.candidate_category
+                )
+                placement_ids[request_index, candidate_index] = artifacts.encode(
+                    "placement", row.placement
+                )
+                geo_cell_ids[request_index, candidate_index] = artifacts.encode(
+                    "geo_cell", row.candidate_geo_cell
+                )
+                if labels is not None:
+                    labels[request_index, candidate_index] = float(row.clicked)
+                candidate_mask[request_index, candidate_index] = True
+        batches.append(
+            GreenSmAdsBatch(
+                foundation_batch=foundation_batch,
+                candidate_hash_ids=candidate_hash_ids,
+                campaign_hash_ids=campaign_hash_ids,
+                category_ids=category_ids,
+                placement_ids=placement_ids,
+                geo_cell_ids=geo_cell_ids,
+                labels=labels,
+                candidate_mask=candidate_mask,
+                opportunities=requests,
+            )
+        )
+    return tuple(batches)
 
 
 @dataclass(frozen=True)
