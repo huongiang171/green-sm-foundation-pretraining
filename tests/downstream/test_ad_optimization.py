@@ -234,6 +234,125 @@ def test_native_loader_does_not_retain_clicked_for_test_inference(tmp_path: Path
     assert rows[0].clicked is None
 
 
+def test_frozen_foundation_native_logits_keep_foundation_gradients_empty() -> None:
+    """Removing the narrow no-grad boundary must make this train-safety test fail."""
+
+    class FixtureEmbedder(torch.nn.Module):
+        def __init__(self) -> None:
+            super().__init__()
+            self.weight = torch.nn.Parameter(torch.ones(1))
+
+        def embed_users(self, _batch: object) -> dict[str, torch.Tensor]:
+            value = self.weight.expand(1, 4)
+            return {"long_term": value, "short_term": value}
+
+    ranker = ad_optimization.AdsRanker(
+        candidate_buckets=17,
+        campaign_buckets=17,
+        num_categories=3,
+        num_placements=3,
+        num_geo_cells=3,
+        d_model=4,
+        dropout=0.0,
+    )
+    batch = SimpleNamespace(
+        foundation_batch=object(),
+        candidate_hash_ids=torch.tensor([[2]]),
+        campaign_hash_ids=torch.tensor([[2]]),
+        category_ids=torch.tensor([[2]]),
+        placement_ids=torch.tensor([[2]]),
+        geo_cell_ids=torch.tensor([[2]]),
+        candidate_mask=torch.tensor([[True]]),
+        labels=torch.tensor([[1.0]]),
+    )
+    embedder = FixtureEmbedder()
+
+    logits = ad_optimization.frozen_foundation_ads_logits(embedder, ranker, batch)
+    loss, count = ad_optimization.masked_binary_cross_entropy(logits, batch.labels, batch.candidate_mask)
+    loss.backward()
+
+    assert count == 1
+    assert embedder.weight.grad is None
+    assert any(parameter.grad is not None for parameter in ranker.parameters())
+
+
+def test_train_ads_ranker_optimizes_only_native_ranker_parameters() -> None:
+    """A training loop that updates Foundation defeats the frozen downstream contract."""
+
+    class FixtureEmbedder(torch.nn.Module):
+        def __init__(self) -> None:
+            super().__init__()
+            self.weight = torch.nn.Parameter(torch.ones(1))
+
+        def embed_users(self, _batch: object) -> dict[str, torch.Tensor]:
+            value = self.weight.expand(1, 4)
+            return {"long_term": value, "short_term": value}
+
+    ranker = ad_optimization.AdsRanker(
+        candidate_buckets=17, campaign_buckets=17, num_categories=3,
+        num_placements=3, num_geo_cells=3, d_model=4, dropout=0.0,
+    )
+    batch = SimpleNamespace(
+        foundation_batch=object(), candidate_hash_ids=torch.tensor([[2]]),
+        campaign_hash_ids=torch.tensor([[2]]), category_ids=torch.tensor([[2]]),
+        placement_ids=torch.tensor([[2]]), geo_cell_ids=torch.tensor([[2]]),
+        candidate_mask=torch.tensor([[True]]), labels=torch.tensor([[1.0]]),
+    )
+    embedder = FixtureEmbedder()
+
+    metrics = ad_optimization.train_ads_ranker(
+        embedder, ranker, train_batches=(batch,), validation_batches=(batch,),
+        device=torch.device("cpu"), epochs=1, learning_rate=0.01, weight_decay=0.0,
+    )
+
+    assert metrics[0]["epoch"] == 1
+    assert metrics[0]["validation_bce"] >= 0.0
+    assert embedder.weight.grad is None
+
+
+def test_native_prediction_export_is_identical_when_test_click_labels_change(tmp_path: Path) -> None:
+    """Adding clicked to test features or export would violate the public handoff."""
+
+    row_type = ad_optimization.GreenSmAdsOpportunity
+    first = row_type.from_mapping(
+        _green_sm_opportunity_row(split="test", clicked=0), require_label=False
+    )
+    changed_label = row_type.from_mapping(
+        _green_sm_opportunity_row(split="test", clicked=1), require_label=False
+    )
+    batch = SimpleNamespace(
+        candidate_mask=torch.tensor([[True]]), opportunities=((first,),),
+    )
+    changed_batch = SimpleNamespace(
+        candidate_mask=torch.tensor([[True]]), opportunities=((changed_label,),),
+    )
+    logits = torch.tensor([[0.4]])
+
+    rows = ad_optimization.native_prediction_rows_from_batch(batch, logits, split="test")
+    changed_rows = ad_optimization.native_prediction_rows_from_batch(changed_batch, logits, split="test")
+    paths = ad_optimization.OutputContractV1.write_predictions(
+        rows,
+        expected_candidates=ad_optimization.expected_green_sm_ads_candidates(
+            (first,), data_version="green_sm_sim_full_v1", source_checksums={"ads_manifest_sha256": "a" * 64}
+        ),
+        output_dir=tmp_path,
+        split="test",
+        run_metadata={
+            "selected_checkpoint_sha256": "c" * 64,
+            "vocabulary_sha256": "v" * 64,
+            "foundation_manifest_sha256": "f" * 64,
+            "ads_manifest_sha256": "a" * 64,
+            "config_digest": "d" * 64,
+            "seed": 7,
+            "run_id": "fixture",
+            "score_semantics": "probability",
+        },
+    )
+
+    assert rows == changed_rows
+    assert "clicked" not in pq.read_table(paths.predictions).column_names
+
+
 def _encoded(sample_id: str = "sample-1", user_id: str = "user-1") -> EncodedSample:
     return EncodedSample(sample_id=sample_id, dataset_name="taobao_display_ads", user_id=user_id, records=())
 

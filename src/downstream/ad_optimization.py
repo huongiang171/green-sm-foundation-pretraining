@@ -13,9 +13,9 @@ import re
 import sys
 import tempfile
 from collections import defaultdict
-from collections.abc import Iterable, Mapping, Sequence
+from collections.abc import Callable, Iterable, Mapping, Sequence
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Literal
 
@@ -26,7 +26,13 @@ import yaml
 from torch import nn
 from torch.nn import functional as F
 
-from src.contracts.output import OutputContractV1, OutputPaths
+from src.contracts.output import (
+    ExpectedCandidate,
+    OutputContractV1,
+    OutputPaths,
+    PredictionRow,
+    VerifiedOpportunityIndex,
+)
 from src.foundation_input.dataset import DatasetConfig, FoundationPretrainDataset, encode_sample
 from src.foundation_input.loader import iter_normalized_samples
 from src.foundation_input.tokenizer import TokenizerConfig
@@ -1026,6 +1032,130 @@ class AdRanker(nn.Module):
         return logits
 
 
+class AdsRanker(nn.Module):
+    """Native Green SM CTR ranker with distinct category, placement, and geo-cell inputs."""
+
+    def __init__(
+        self,
+        *,
+        candidate_buckets: int,
+        campaign_buckets: int,
+        num_categories: int,
+        num_placements: int,
+        num_geo_cells: int,
+        d_model: int,
+        dropout: float,
+    ) -> None:
+        super().__init__()
+        if min(
+            candidate_buckets,
+            campaign_buckets,
+            num_categories,
+            num_placements,
+            num_geo_cells,
+            d_model,
+        ) <= 0:
+            raise ValueError("Embedding cardinalities and d_model must be positive")
+        if candidate_buckets < 3 or campaign_buckets < 3:
+            raise ValueError("Hash buckets must reserve PAD=0 and UNK=1")
+        self.candidate_buckets = candidate_buckets
+        self.campaign_buckets = campaign_buckets
+        self.num_categories = num_categories
+        self.num_placements = num_placements
+        self.num_geo_cells = num_geo_cells
+        self.d_model = d_model
+        self.candidate_embedding = nn.Embedding(candidate_buckets, d_model, padding_idx=0)
+        self.campaign_embedding = nn.Embedding(campaign_buckets, d_model, padding_idx=0)
+        self.category_embedding = nn.Embedding(num_categories, d_model, padding_idx=0)
+        self.placement_embedding = nn.Embedding(num_placements, d_model, padding_idx=0)
+        self.geo_cell_embedding = nn.Embedding(num_geo_cells, d_model, padding_idx=0)
+        self.user_fusion = nn.Sequential(
+            nn.LayerNorm(d_model * 2), nn.Linear(d_model * 2, d_model), nn.GELU()
+        )
+        self.candidate_fusion = nn.Sequential(
+            nn.LayerNorm(d_model * 5), nn.Linear(d_model * 5, d_model), nn.GELU()
+        )
+        self.scorer = nn.Sequential(
+            nn.LayerNorm(d_model * 2),
+            nn.Linear(d_model * 2, d_model),
+            nn.GELU(),
+            nn.Dropout(dropout),
+            nn.Linear(d_model, 1),
+        )
+
+    def forward(
+        self,
+        long_term: torch.Tensor,
+        short_term: torch.Tensor,
+        *,
+        candidate_hash_ids: torch.LongTensor,
+        campaign_hash_ids: torch.LongTensor,
+        category_ids: torch.LongTensor,
+        placement_ids: torch.LongTensor,
+        geo_cell_ids: torch.LongTensor,
+    ) -> torch.Tensor:
+        if (
+            long_term.ndim != 2
+            or long_term.shape != short_term.shape
+            or long_term.shape[1] != self.d_model
+            or not torch.is_floating_point(long_term)
+            or not torch.is_floating_point(short_term)
+            or not torch.isfinite(long_term).all()
+            or not torch.isfinite(short_term).all()
+        ):
+            raise ValueError("long_term and short_term must be finite floating [B, d_model] tensors")
+        expected = candidate_hash_ids.shape
+        for name, tensor, cardinality in (
+            ("candidate_hash_ids", candidate_hash_ids, self.candidate_buckets),
+            ("campaign_hash_ids", campaign_hash_ids, self.campaign_buckets),
+            ("category_ids", category_ids, self.num_categories),
+            ("placement_ids", placement_ids, self.num_placements),
+            ("geo_cell_ids", geo_cell_ids, self.num_geo_cells),
+        ):
+            _validate_feature_ids(name, tensor, size=cardinality)
+            if tensor.shape != expected:
+                raise ValueError("All candidate feature tensors must share shape [B, C]")
+        if expected[0] != long_term.shape[0]:
+            raise ValueError("Candidate batch dimension must match Foundation embeddings")
+        user = self.user_fusion(torch.cat((long_term, short_term), dim=-1))
+        candidate = self.candidate_fusion(
+            torch.cat(
+                (
+                    self.candidate_embedding(candidate_hash_ids),
+                    self.campaign_embedding(campaign_hash_ids),
+                    self.category_embedding(category_ids),
+                    self.placement_embedding(placement_ids),
+                    self.geo_cell_embedding(geo_cell_ids),
+                ),
+                dim=-1,
+            )
+        )
+        logits = self.scorer(
+            torch.cat((user.unsqueeze(1).expand(-1, expected[1], -1), candidate), dim=-1)
+        ).squeeze(-1)
+        if not torch.isfinite(logits).all():
+            raise ValueError("AdsRanker produced non-finite logits")
+        return logits
+
+
+def frozen_foundation_ads_logits(
+    embedder: Any, ranker: AdsRanker, batch: GreenSmAdsBatch
+) -> torch.Tensor:
+    """Embed users without gradients, then score native candidate features with gradients."""
+
+    with torch.no_grad():
+        embeddings = embedder.embed_users(batch.foundation_batch)
+    return ranker(
+        embeddings["long_term"],
+        embeddings["short_term"],
+        candidate_hash_ids=batch.candidate_hash_ids,
+        campaign_hash_ids=batch.campaign_hash_ids,
+        category_ids=batch.category_ids,
+        placement_ids=batch.placement_ids,
+        geo_cell_ids=batch.geo_cell_ids,
+    )
+
+
 def masked_binary_cross_entropy(
     logits: torch.Tensor, clicked: torch.Tensor, candidate_mask: torch.BoolTensor
 ) -> tuple[torch.Tensor, int]:
@@ -1041,6 +1171,91 @@ def masked_binary_cross_entropy(
     if count == 0:
         return logits.sum() * 0.0, 0
     return F.binary_cross_entropy_with_logits(logits[candidate_mask], clicked[candidate_mask]), count
+
+
+def _native_mean_ads_loss(
+    embedder: Any,
+    ranker: AdsRanker,
+    batches: Sequence[GreenSmAdsBatch],
+) -> float:
+    ranker.eval()
+    if hasattr(embedder, "eval"):
+        embedder.eval()
+    weighted_loss = 0.0
+    candidate_count = 0
+    with torch.no_grad():
+        for batch in batches:
+            if batch.labels is None:
+                raise ValueError("native Ads validation requires labels")
+            loss, count = masked_binary_cross_entropy(
+                frozen_foundation_ads_logits(embedder, ranker, batch),
+                batch.labels,
+                batch.candidate_mask,
+            )
+            weighted_loss += float(loss.item()) * count
+            candidate_count += count
+    if candidate_count == 0:
+        raise ValueError("native Ads validation has no real candidates")
+    return weighted_loss / candidate_count
+
+
+def train_ads_ranker(
+    embedder: Any,
+    ranker: AdsRanker,
+    *,
+    train_batches: Sequence[GreenSmAdsBatch],
+    validation_batches: Sequence[GreenSmAdsBatch],
+    device: torch.device,
+    epochs: int,
+    learning_rate: float,
+    weight_decay: float,
+    on_epoch: Callable[[dict[str, float | int]], None] | None = None,
+) -> list[dict[str, float | int]]:
+    """Train only the native Ads ranker and return per-epoch weighted BCE metrics."""
+
+    if epochs < 1 or learning_rate <= 0 or weight_decay < 0:
+        raise ValueError("epochs, learning_rate, and weight_decay are invalid")
+    if not train_batches or not validation_batches:
+        raise ValueError("native Ads train and validation batches must be non-empty")
+    if hasattr(embedder, "to"):
+        embedder.to(device)
+    if hasattr(embedder, "eval"):
+        embedder.eval()
+    if hasattr(embedder, "parameters"):
+        for parameter in embedder.parameters():
+            parameter.requires_grad_(False)
+    ranker.to(device)
+    optimizer = torch.optim.AdamW(
+        ranker.parameters(), lr=learning_rate, weight_decay=weight_decay
+    )
+    metrics: list[dict[str, float | int]] = []
+    for epoch in range(1, epochs + 1):
+        ranker.train()
+        weighted_loss = 0.0
+        candidate_count = 0
+        for batch in train_batches:
+            if batch.labels is None:
+                raise ValueError("native Ads training requires labels")
+            optimizer.zero_grad(set_to_none=True)
+            logits = frozen_foundation_ads_logits(embedder, ranker, batch)
+            loss, count = masked_binary_cross_entropy(logits, batch.labels, batch.candidate_mask)
+            if count == 0:
+                continue
+            loss.backward()
+            optimizer.step()
+            weighted_loss += float(loss.detach().item()) * count
+            candidate_count += count
+        if candidate_count == 0:
+            raise ValueError("native Ads training has no real candidates")
+        metric = {
+            "epoch": epoch,
+            "train_bce": weighted_loss / candidate_count,
+            "validation_bce": _native_mean_ads_loss(embedder, ranker, validation_batches),
+        }
+        metrics.append(metric)
+        if on_epoch is not None:
+            on_epoch(metric)
+    return metrics
 
 
 def score_probabilities(logits: torch.Tensor, candidate_mask: torch.BoolTensor) -> torch.Tensor:
@@ -1194,7 +1409,7 @@ def _mean_ads_loss(embedder: Any, ranker: AdRanker, batches: Sequence[AdBatch], 
     return weighted / count
 
 
-def run_ads_training(config: Mapping[str, Any]) -> dict[str, Any]:
+def _legacy_run_ads_training(config: Mapping[str, Any]) -> dict[str, Any]:
     handoff = validate_green_sm_ads_data_handoff(config)
     model, training, ranker_settings = _ads_settings(config)
     seed = config.get("seed")
@@ -1231,7 +1446,7 @@ def run_ads_training(config: Mapping[str, Any]) -> dict[str, Any]:
     return {"run_dir": str(run_dir), "best_epoch": best_epoch, "best_validation_bce": best, "train_requests": len(_group_requests(train_rows)), "validation_requests": len(_group_requests(validation_rows))}
 
 
-def run_ads_prediction(config: Mapping[str, Any], *, split: Literal["validation", "test"]) -> OutputPaths:
+def _legacy_run_ads_prediction(config: Mapping[str, Any], *, split: Literal["validation", "test"]) -> OutputPaths:
     handoff = validate_green_sm_ads_data_handoff(config)
     _, training, ranker_settings = _ads_settings(config); device = str(training.get("device", "cpu"))
     embedder, foundation = _load_ads_foundation(config, device=device)
@@ -1251,6 +1466,372 @@ def run_ads_prediction(config: Mapping[str, Any], *, split: Literal["validation"
         for batch in batches:
             moved = _to_device_ad_batch(batch, torch.device(device)); logits = _ads_logits(embedder, ranker, moved); predictions.extend(prediction_rows_from_batch(moved, score_probabilities(logits, moved.candidate_mask).cpu(), split=split))
     return OutputContractV1.write_predictions(predictions, expected_candidates=expected_green_sm_candidates(rows, data_version=handoff["data_version"], source_checksums={"ads_manifest_sha256": handoff["ads_manifest_sha256"], "foundation_manifest_sha256": handoff["foundation_manifest_sha256"]}), output_dir=run_dir / "predictions" / split, split=split, run_metadata={"selected_checkpoint_sha256": foundation.manifest["checkpoint_sha256"], "vocabulary_sha256": foundation.manifest["vocabulary_sha256"], "foundation_manifest_sha256": handoff["foundation_manifest_sha256"], "ads_manifest_sha256": handoff["ads_manifest_sha256"], "config_digest": "runtime", "seed": config["seed"], "run_id": manifest["run_id"], "score_semantics": "probability"})
+
+
+def load_green_sm_encoded_foundation_samples(
+    rows: Sequence[GreenSmAdsOpportunity],
+    *,
+    foundation_root: str | Path,
+    vocabulary_path: str | Path,
+    split: Literal["train", "validation", "test"],
+    max_tokens: int,
+) -> dict[str, EncodedSample]:
+    """Resolve native Ads opportunities to causal snapshots under the published vocabulary."""
+
+    from src.pretraining.green_sm_contract import load_green_sm_tokenizer_config
+
+    validated = validate_green_sm_opportunities(rows, expected_split=split)
+    by_sample: dict[str, GreenSmAdsOpportunity] = {}
+    for row in validated:
+        previous = by_sample.setdefault(row.foundation_sample_id, row)
+        if (
+            previous.user_id != row.user_id
+            or previous.cutoff_timestamp != row.cutoff_timestamp
+            or previous.split != row.split
+        ):
+            raise ValueError(f"foundation_sample_id={row.foundation_sample_id!r}: inconsistent Ads rows")
+    artifacts = VocabularyArtifacts.load(vocabulary_path)
+    dataset = FoundationPretrainDataset(
+        str(foundation_root),
+        split,
+        artifacts,
+        tokenizer_config=load_green_sm_tokenizer_config(foundation_root),
+        dataset_config=DatasetConfig(max_tokens=max_tokens),
+    )
+    found: dict[str, EncodedSample] = {}
+    for canonical in iter_normalized_samples(foundation_root, split, validate=True):
+        row = by_sample.get(canonical.sample_id)
+        if row is None:
+            continue
+        if canonical.user_id != row.user_id:
+            raise ValueError(f"{canonical.sample_id!r}: user_id does not match Ads opportunity")
+        if int(canonical.cutoff_time.timestamp()) != row.cutoff_timestamp:
+            raise ValueError(f"{canonical.sample_id!r}: cutoff_timestamp does not match Ads opportunity")
+        found[canonical.sample_id] = encode_sample(
+            canonical, artifacts, dataset.tokenizer_config, dataset.dataset_config
+        )
+    missing = sorted(set(by_sample) - set(found))
+    if missing:
+        raise ValueError(f"foundation_sample_id not found in split {split!r}: {missing[0]!r}")
+    return found
+
+
+def _to_device_green_sm_ads_batch(batch: GreenSmAdsBatch, device: torch.device) -> GreenSmAdsBatch:
+    copied = copy.copy(batch)
+    foundation = copy.copy(batch.foundation_batch)
+    for name, value in vars(foundation).items():
+        if isinstance(value, torch.Tensor):
+            setattr(foundation, name, value.to(device))
+        elif name == "targets" and isinstance(value, dict):
+            foundation.targets = {key: tensor.to(device) for key, tensor in value.items()}
+    copied.foundation_batch = foundation
+    for name in (
+        "candidate_hash_ids", "campaign_hash_ids", "category_ids", "placement_ids",
+        "geo_cell_ids", "candidate_mask",
+    ):
+        setattr(copied, name, getattr(batch, name).to(device))
+    if batch.labels is not None:
+        copied.labels = batch.labels.to(device)
+    return copied
+
+
+def _feature_artifact_payload(artifacts: AdsFeatureArtifacts) -> dict[str, dict[str, int]]:
+    return {
+        "category": dict(artifacts.category),
+        "placement": dict(artifacts.placement),
+        "geo_cell": dict(artifacts.geo_cell),
+    }
+
+
+def _load_feature_artifacts(payload: Mapping[str, Any]) -> AdsFeatureArtifacts:
+    vocabularies: dict[str, dict[str, int]] = {}
+    for field in ("category", "placement", "geo_cell"):
+        value = payload.get(field)
+        if not isinstance(value, Mapping) or value.get("<PAD>") != 0 or value.get("<UNK>") != 1:
+            raise AdConfigurationError(f"Ads feature artifact has invalid {field} vocabulary")
+        vocabularies[field] = {str(key): int(index) for key, index in value.items()}
+    return AdsFeatureArtifacts(**vocabularies)
+
+
+def _load_native_ads_rows_and_batches(
+    config: Mapping[str, Any],
+    *,
+    split: Literal["train", "validation", "test"],
+    artifacts: AdsFeatureArtifacts | None = None,
+    require_labels: bool,
+) -> tuple[tuple[GreenSmAdsOpportunity, ...], tuple[GreenSmAdsBatch, ...], AdsFeatureArtifacts]:
+    data = _require_mapping(config, "data")
+    model, training, _ = _ads_settings(config)
+    rows = load_green_sm_ads_opportunities(
+        _require_text(data, "opportunities_root", prefix="config.data"),
+        split=split,
+        require_labels=require_labels,
+    )
+    fitted = artifacts
+    if fitted is None:
+        if split != "train":
+            raise AdConfigurationError("Ads feature artifacts must be supplied for evaluation")
+        fitted = AdsFeatureArtifacts.fit(rows)
+    foundation = resolve_selected_foundation_handoff(
+        _require_text(_require_mapping(config, "checkpoint"), "package_root", prefix="config.checkpoint")
+    )
+    samples = load_green_sm_encoded_foundation_samples(
+        rows,
+        foundation_root=_require_text(data, "foundation_root", prefix="config.data"),
+        vocabulary_path=foundation.vocabulary_path,
+        split=split,
+        max_tokens=int(data.get("max_tokens", 256)),
+    )
+    batches = build_green_sm_ads_batches(
+        rows,
+        encoded_samples_by_id=samples,
+        artifacts=fitted,
+        candidate_hash_buckets=int(model["candidate_hash_buckets"]),
+        campaign_hash_buckets=int(model["campaign_hash_buckets"]),
+        batch_size=int(training["batch_size"]),
+    )
+    return rows, batches, fitted
+
+
+def _native_ranker_config(model: Mapping[str, Any], artifacts: AdsFeatureArtifacts, d_model: int) -> dict[str, Any]:
+    return {
+        "candidate_buckets": int(model["candidate_hash_buckets"]),
+        "campaign_buckets": int(model["campaign_hash_buckets"]),
+        "num_categories": len(artifacts.category),
+        "num_placements": len(artifacts.placement),
+        "num_geo_cells": len(artifacts.geo_cell),
+        "d_model": d_model,
+        "dropout": float(model.get("dropout", 0.0)),
+    }
+
+
+def run_ads_training(config: Mapping[str, Any]) -> dict[str, Any]:
+    """Run checksum-gated native Green SM Ads training and publish a reloadable ranker run."""
+
+    handoff = validate_green_sm_ads_data_handoff(config)
+    model, training, ranker_settings = _ads_settings(config)
+    seed = config.get("seed")
+    if not isinstance(seed, int):
+        raise AdConfigurationError("config.seed must be an integer")
+    device_name = str(training.get("device", "cpu"))
+    if device_name.startswith("cuda") and not torch.cuda.is_available():
+        raise AdConfigurationError("CUDA was requested but is unavailable")
+    device = torch.device(device_name)
+    random.seed(seed)
+    torch.manual_seed(seed)
+    embedder, foundation = _load_ads_foundation(config, device=device_name)
+    train_rows, train_batches, artifacts = _load_native_ads_rows_and_batches(
+        config, split="train", require_labels=True
+    )
+    validation_rows, validation_batches, _ = _load_native_ads_rows_and_batches(
+        config, split="validation", artifacts=artifacts, require_labels=True
+    )
+    moved_train = tuple(_to_device_green_sm_ads_batch(batch, device) for batch in train_batches)
+    moved_validation = tuple(
+        _to_device_green_sm_ads_batch(batch, device) for batch in validation_batches
+    )
+    run_dir = Path(_require_text(ranker_settings, "run_dir", prefix="config.ranker"))
+    if run_dir.exists() and any(run_dir.iterdir()):
+        raise AdConfigurationError(f"Ads run directory must be new and empty: {run_dir}")
+    run_dir.mkdir(parents=True, exist_ok=True)
+    ranker_config = _native_ranker_config(model, artifacts, int(embedder.model.config.d_model))
+    ranker = AdsRanker(**ranker_config).to(device)
+    _atomic_json(run_dir / "feature_artifacts.json", _feature_artifact_payload(artifacts))
+    best_validation = float("inf")
+    best_epoch = 0
+
+    def save_epoch(metric: dict[str, float | int]) -> None:
+        nonlocal best_epoch, best_validation
+        payload = {
+            "ranker_config": ranker_config,
+            "ranker_state_dict": ranker.state_dict(),
+            "epoch": int(metric["epoch"]),
+        }
+        _atomic_torch_save(run_dir / "last.pt", payload)
+        validation_bce = float(metric["validation_bce"])
+        if validation_bce < best_validation:
+            best_validation = validation_bce
+            best_epoch = int(metric["epoch"])
+            _atomic_torch_save(run_dir / "best.pt", payload)
+
+    metrics = train_ads_ranker(
+        embedder,
+        ranker,
+        train_batches=moved_train,
+        validation_batches=moved_validation,
+        device=device,
+        epochs=int(training["epochs"]),
+        learning_rate=float(training["learning_rate"]),
+        weight_decay=float(training.get("weight_decay", 0.0)),
+        on_epoch=save_epoch,
+    )
+    metrics_path = run_dir / "train_metrics.jsonl"
+    metrics_path.write_text("".join(json.dumps(metric, sort_keys=True) + "\n" for metric in metrics), encoding="utf-8")
+    manifest = {
+        "schema_version": "green_sm_ads_ranker_v1",
+        "run_id": run_dir.name,
+        "seed": seed,
+        "data_version": handoff["data_version"],
+        "ads_manifest_sha256": handoff["ads_manifest_sha256"],
+        "foundation_manifest_sha256": handoff["foundation_manifest_sha256"],
+        "selected_checkpoint_sha256": foundation.manifest["checkpoint_sha256"],
+        "vocabulary_sha256": foundation.manifest["vocabulary_sha256"],
+        "feature_artifacts": "feature_artifacts.json",
+        "feature_artifacts_sha256": _sha256(run_dir / "feature_artifacts.json"),
+        "last_checkpoint": "last.pt",
+        "last_checkpoint_sha256": _sha256(run_dir / "last.pt"),
+        "best_checkpoint": "best.pt",
+        "best_checkpoint_sha256": _sha256(run_dir / "best.pt"),
+        "ranker_config": ranker_config,
+        "best_epoch": best_epoch,
+        "best_validation_bce": best_validation,
+        "train_requests": len(_group_green_sm_requests(train_rows)),
+        "validation_requests": len(_group_green_sm_requests(validation_rows)),
+    }
+    _atomic_json(run_dir / "run_manifest.json", manifest)
+    return {"run_dir": str(run_dir), "best_epoch": best_epoch, "best_validation_bce": best_validation}
+
+
+def expected_green_sm_ads_candidates(
+    rows: Sequence[GreenSmAdsOpportunity],
+    *,
+    data_version: str,
+    source_checksums: Mapping[str, str],
+) -> VerifiedOpportunityIndex:
+    """Build the immutable native candidate universe without consulting click labels."""
+
+    return VerifiedOpportunityIndex(
+        (
+            ExpectedCandidate(
+                request_id=row.request_id,
+                candidate_id=row.candidate_id,
+                user_id=row.user_id,
+                cutoff_timestamp=datetime.fromtimestamp(
+                    row.cutoff_timestamp, tz=timezone.utc
+                ).isoformat(),
+                split=row.split,  # type: ignore[arg-type]
+            )
+            for row in rows
+        ),
+        task="ad_optimization",
+        data_version=data_version,
+        source_checksums=dict(source_checksums),
+    )
+
+
+def native_prediction_rows_from_batch(
+    batch: GreenSmAdsBatch,
+    logits: torch.Tensor,
+    *,
+    split: Literal["validation", "test"],
+) -> list[PredictionRow]:
+    """Flatten exactly non-padding candidates to label-free sigmoid predictions."""
+
+    probabilities = score_probabilities(logits, batch.candidate_mask)
+    rows: list[PredictionRow] = []
+    for request_index, request in enumerate(batch.opportunities):
+        for candidate_index, row in enumerate(request):
+            if not bool(batch.candidate_mask[request_index, candidate_index]):
+                continue
+            rows.append(
+                PredictionRow(
+                    request_id=row.request_id,
+                    candidate_id=row.candidate_id,
+                    score=float(probabilities[request_index, candidate_index].item()),
+                    split=split,
+                    raw_logit=float(logits[request_index, candidate_index].item()),
+                )
+            )
+    return rows
+
+
+def _config_digest(config: Mapping[str, Any]) -> str:
+    return hashlib.sha256(json.dumps(config, sort_keys=True, default=str).encode()).hexdigest()
+
+
+def _load_native_ads_ranker(
+    config: Mapping[str, Any],
+    *,
+    foundation: SelectedFoundationHandoff,
+    device: torch.device,
+) -> tuple[AdsRanker, dict[str, Any], AdsFeatureArtifacts, Path]:
+    _, _, ranker_settings = _ads_settings(config)
+    run_dir = Path(_require_text(ranker_settings, "run_dir", prefix="config.ranker"))
+    manifest_path = run_dir / "run_manifest.json"
+    manifest = _read_json(manifest_path, label="Ads run manifest")
+    expected_manifest_sha = _require_text(
+        ranker_settings, "expected_run_manifest_sha256", prefix="config.ranker"
+    )
+    _verify_sha256(manifest_path, expected_manifest_sha, label="Ads run manifest")
+    if manifest.get("selected_checkpoint_sha256") != foundation.manifest["checkpoint_sha256"]:
+        raise AdConfigurationError("Ads run used a different Foundation checkpoint")
+    if manifest.get("vocabulary_sha256") != foundation.manifest["vocabulary_sha256"]:
+        raise AdConfigurationError("Ads run used a different Foundation vocabulary")
+    features_path = run_dir / str(manifest.get("feature_artifacts", ""))
+    _verify_sha256(features_path, str(manifest.get("feature_artifacts_sha256", "")), label="Ads feature artifacts")
+    checkpoint_path = run_dir / str(manifest.get("best_checkpoint", ""))
+    _verify_sha256(checkpoint_path, str(manifest.get("best_checkpoint_sha256", "")), label="Ads best checkpoint")
+    payload = torch.load(checkpoint_path, map_location=device, weights_only=False)
+    ranker_config = payload.get("ranker_config")
+    state_dict = payload.get("ranker_state_dict")
+    if not isinstance(ranker_config, Mapping) or not isinstance(state_dict, Mapping):
+        raise AdConfigurationError("Ads checkpoint has invalid ranker payload")
+    ranker = AdsRanker(**dict(ranker_config)).to(device)
+    ranker.load_state_dict(state_dict)
+    ranker.eval()
+    return ranker, manifest, _load_feature_artifacts(_read_json(features_path, label="Ads feature artifacts")), run_dir
+
+
+def run_ads_prediction(
+    config: Mapping[str, Any], *, split: Literal["validation", "test"]
+) -> OutputPaths:
+    """Reload a verified native ranker and export one label-free split."""
+
+    handoff = validate_green_sm_ads_data_handoff(config)
+    _, training, _ = _ads_settings(config)
+    device_name = str(training.get("device", "cpu"))
+    if device_name.startswith("cuda") and not torch.cuda.is_available():
+        raise AdConfigurationError("CUDA was requested but is unavailable")
+    device = torch.device(device_name)
+    embedder, foundation = _load_ads_foundation(config, device=device_name)
+    ranker, manifest, artifacts, run_dir = _load_native_ads_ranker(
+        config, foundation=foundation, device=device
+    )
+    rows, batches, _ = _load_native_ads_rows_and_batches(
+        config, split=split, artifacts=artifacts, require_labels=False
+    )
+    predictions: list[PredictionRow] = []
+    with torch.no_grad():
+        for batch in batches:
+            moved = _to_device_green_sm_ads_batch(batch, device)
+            predictions.extend(
+                native_prediction_rows_from_batch(
+                    moved, frozen_foundation_ads_logits(embedder, ranker, moved), split=split
+                )
+            )
+    return OutputContractV1.write_predictions(
+        predictions,
+        expected_candidates=expected_green_sm_ads_candidates(
+            rows,
+            data_version=handoff["data_version"],
+            source_checksums={
+                "ads_manifest_sha256": handoff["ads_manifest_sha256"],
+                "foundation_manifest_sha256": handoff["foundation_manifest_sha256"],
+            },
+        ),
+        output_dir=run_dir / "predictions" / split,
+        split=split,
+        run_metadata={
+            "selected_checkpoint_sha256": foundation.manifest["checkpoint_sha256"],
+            "vocabulary_sha256": foundation.manifest["vocabulary_sha256"],
+            "foundation_manifest_sha256": handoff["foundation_manifest_sha256"],
+            "ads_manifest_sha256": handoff["ads_manifest_sha256"],
+            "config_digest": _config_digest(config),
+            "seed": config["seed"],
+            "run_id": manifest["run_id"],
+            "score_semantics": "probability",
+        },
+    )
 
 
 if __name__ == "__main__":  # pragma: no cover
