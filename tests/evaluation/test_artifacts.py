@@ -11,6 +11,7 @@ from src.evaluation.artifacts import EvaluationArtifactError, load_verified_pred
 
 from .conftest import (
     prediction_rows,
+    sha256,
     write_baseline_prediction_dir,
     write_foundation_prediction_dir,
 )
@@ -89,4 +90,22 @@ def test_rejects_baseline_that_claims_foundation_identity(food_opportunities_roo
     sidecar_path.write_text(json.dumps(sidecar), encoding="utf-8")
 
     with pytest.raises(EvaluationArtifactError, match="foundation_identity"):
+        load_verified_predictions("food_recommendation", "test", prediction_dir, food_opportunities_root)
+
+
+@pytest.mark.parametrize("fractional_label", [0.9, 1.9])
+def test_rejects_non_binary_source_labels_before_integer_coercion(
+    food_opportunities_root: Path, tmp_path: Path, fractional_label: float
+) -> None:
+    split_path = food_opportunities_root / "food_opportunities.test.parquet"
+    rows = pq.read_table(split_path).to_pylist()
+    rows[0]["is_positive"] = fractional_label
+    pq.write_table(pa.Table.from_pylist(rows), split_path)
+    manifest_path = food_opportunities_root / "manifest.json"
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    manifest["files"]["test"]["sha256"] = sha256(split_path)
+    manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
+    prediction_dir = write_baseline_prediction_dir(tmp_path, food_opportunities_root)
+
+    with pytest.raises(EvaluationArtifactError, match="binary"):
         load_verified_predictions("food_recommendation", "test", prediction_dir, food_opportunities_root)

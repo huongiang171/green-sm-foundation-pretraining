@@ -20,6 +20,8 @@ def test_kaggle_evaluation_notebook_only_invokes_committed_cli() -> None:
     assert "sklearn" not in code
     assert "roc_auc_score" not in code
     assert "average_precision_score" not in code
+    assert "def artifact_task" in code
+    assert "artifact_task(directory) == task" in code
 
 
 def test_cli_evaluates_then_compares_reports(food_opportunities_root: Path, tmp_path: Path, capsys) -> None:

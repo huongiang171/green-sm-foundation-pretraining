@@ -249,14 +249,17 @@ def load_verified_predictions(
         if prediction.cutoff_timestamp_utc != expected_cutoff:
             raise EvaluationArtifactError("Prediction cutoff_timestamp does not match opportunity candidate")
     label_table = pq.read_table(source_path, columns=["request_id", "candidate_id", label_column])
-    labels_by_candidate = {
-        (str(row["request_id"]), str(row["candidate_id"])): int(row[label_column])
-        for row in label_table.to_pylist()
-    }
+    labels_by_candidate: dict[tuple[str, str], int] = {}
+    for row in label_table.to_pylist():
+        key = (str(row["request_id"]), str(row["candidate_id"]))
+        raw_label = row[label_column]
+        if raw_label not in {0, 1}:
+            raise EvaluationArtifactError("Opportunity labels must be binary")
+        if key in labels_by_candidate:
+            raise EvaluationArtifactError("Opportunity split contains duplicate request/candidate pairs")
+        labels_by_candidate[key] = int(raw_label)
     if set(labels_by_candidate) != set(predictions):
         raise EvaluationArtifactError("Opportunity labels do not match verified candidate universe")
-    if any(label not in {0, 1} for label in labels_by_candidate.values()):
-        raise EvaluationArtifactError("Opportunity labels must be binary")
     return VerifiedEvaluationInput(
         identity=SourceIdentity(
             task=task, data_version=data_version, split=split,

@@ -54,3 +54,25 @@ def test_compare_rejects_each_incompatible_identity(
 
     with pytest.raises(EvaluationComparisonError, match=field):
         compare_reports([report, EvaluationReport(payload=incompatible)])
+
+
+def test_compare_rejects_reports_that_do_not_match_evaluation_report_contract() -> None:
+    malformed = EvaluationReport(
+        payload={
+            "schema_version": "not_a_report",
+            "evaluator_version": None,
+            "metric_policy_version": None,
+            "tie_break_policy": None,
+            "timestamp_policy": None,
+            "task": None,
+            "split": None,
+            "data_version": None,
+            "candidate_manifest_sha256": None,
+            "candidate_split_sha256": None,
+            "model_provenance": {},
+            "metrics": {"roc_auc": "garbage"},
+        }
+    )
+
+    with pytest.raises(EvaluationComparisonError, match="schema_version"):
+        compare_reports([malformed, malformed])
