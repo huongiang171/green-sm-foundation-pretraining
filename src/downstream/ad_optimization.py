@@ -39,6 +39,17 @@ class UpstreamHandoffError(RuntimeError):
     """A required Member 3/contract handoff has not been delivered yet."""
 
 
+@dataclass(frozen=True)
+class SelectedFoundationHandoff:
+    """The concrete Foundation files selected by a published checkpoint manifest."""
+
+    checkpoint_path: Path
+    selection_manifest_path: Path
+    vocabulary_path: Path
+    selected_kind: str
+    manifest: Mapping[str, Any]
+
+
 def _read_json(path: Path, *, label: str) -> dict[str, Any]:
     if not path.is_file():
         raise AdConfigurationError(f"{label} not found: {path}")
@@ -57,6 +68,43 @@ def _sha256(path: Path) -> str:
         for chunk in iter(lambda: handle.read(1024 * 1024), b""):
             digest.update(chunk)
     return digest.hexdigest()
+
+
+def resolve_selected_foundation_handoff(package_root: str | Path) -> SelectedFoundationHandoff:
+    """Resolve the published Foundation selection without assuming `best.pt` exists."""
+
+    root = Path(package_root)
+    selection_manifest_path = root / "checkpoint_manifest.json"
+    manifest = _read_json(selection_manifest_path, label="Foundation checkpoint manifest")
+    if manifest.get("schema_version") != "green_sm_foundation_checkpoint_v1":
+        raise AdConfigurationError("Foundation checkpoint manifest has unsupported schema_version")
+    if manifest.get("checkpoint_format_version") != 1:
+        raise AdConfigurationError("Foundation checkpoint manifest has unsupported format version")
+    selected_kind = manifest.get("selected_kind")
+    if selected_kind not in {"best", "last"}:
+        raise AdConfigurationError("Foundation checkpoint manifest selected_kind must be 'best' or 'last'")
+    checkpoint_name = manifest.get("checkpoint")
+    checkpoint_sha = manifest.get("checkpoint_sha256")
+    if not isinstance(checkpoint_name, str) or Path(checkpoint_name).name != checkpoint_name:
+        raise AdConfigurationError("Foundation checkpoint manifest checkpoint must be a filename")
+    if not isinstance(checkpoint_sha, str) or not _SHA256_RE.fullmatch(checkpoint_sha):
+        raise AdConfigurationError("Foundation checkpoint manifest has invalid checkpoint_sha256")
+    checkpoint_path = root / checkpoint_name
+    _verify_sha256(checkpoint_path, checkpoint_sha, label="Selected Foundation checkpoint")
+    vocabulary_path = root / "vocabulary.json"
+    vocabulary_sha = manifest.get("vocabulary_sha256")
+    if not isinstance(vocabulary_sha, str) or not _SHA256_RE.fullmatch(vocabulary_sha):
+        raise AdConfigurationError("Foundation checkpoint manifest has invalid vocabulary_sha256")
+    _verify_sha256(vocabulary_path, vocabulary_sha, label="Foundation vocabulary")
+    if manifest.get("corpus") != "linked":
+        raise AdConfigurationError("Ads requires a linked Foundation checkpoint")
+    return SelectedFoundationHandoff(
+        checkpoint_path=checkpoint_path,
+        selection_manifest_path=selection_manifest_path,
+        vocabulary_path=vocabulary_path,
+        selected_kind=selected_kind,
+        manifest=manifest,
+    )
 
 
 def _require_mapping(config: Mapping[str, Any], key: str) -> Mapping[str, Any]:

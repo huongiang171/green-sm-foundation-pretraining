@@ -326,3 +326,40 @@ def test_cli_rejects_tampered_ads_data(tmp_path: Path, capsys: pytest.CaptureFix
 
     assert exit_code == 2
     assert "Ads train parquet SHA-256 mismatch" in capsys.readouterr().err
+
+
+def test_selected_foundation_handoff_uses_checkpoint_manifest_not_best_filename(tmp_path: Path) -> None:
+    """Ads must follow the published selected checkpoint, including a valid `last` selection."""
+
+    from src.downstream.ad_optimization import resolve_selected_foundation_handoff
+
+    package = tmp_path / "foundation-package"
+    package.mkdir()
+    checkpoint = package / "last.pt"
+    checkpoint.write_bytes(b"selected-last-checkpoint")
+    vocabulary = package / "vocabulary.json"
+    vocabulary.write_text('{"schema_version":"fixture"}\n', encoding="utf-8")
+    manifest = package / "checkpoint_manifest.json"
+    manifest.write_text(
+        json.dumps(
+            {
+                "schema_version": "green_sm_foundation_checkpoint_v1",
+                "checkpoint_format_version": 1,
+                "selected_kind": "last",
+                "checkpoint": "last.pt",
+                "checkpoint_sha256": _sha256(checkpoint),
+                "vocabulary_sha256": _sha256(vocabulary),
+                "linked_manifest_sha256": "linked-foundation",
+                "control_manifest_sha256": "control-foundation",
+                "config_digest": "config",
+                "corpus": "linked",
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    handoff = resolve_selected_foundation_handoff(package)
+
+    assert handoff.checkpoint_path == checkpoint
+    assert handoff.selected_kind == "last"
+    assert handoff.vocabulary_path == vocabulary

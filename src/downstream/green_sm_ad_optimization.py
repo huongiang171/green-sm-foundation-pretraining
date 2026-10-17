@@ -84,13 +84,13 @@ def resolve_green_sm_ads_samples(
     )
 
 
-@torch.no_grad()
 def frozen_foundation_logits(
     embedder: FrozenFoundationEmbedder, ranker: AdRanker, batch: AdBatch
 ) -> torch.Tensor:
     """Score a candidate batch while guaranteeing Foundation weights receive no gradient."""
 
-    embeddings = embedder.embed_users(batch.foundation_batch)
+    with torch.no_grad():
+        embeddings = embedder.embed_users(batch.foundation_batch)
     return ranker(
         embeddings["long_term"], embeddings["short_term"],
         candidate_hash_ids=batch.candidate_hash_ids, campaign_hash_ids=batch.campaign_hash_ids,
