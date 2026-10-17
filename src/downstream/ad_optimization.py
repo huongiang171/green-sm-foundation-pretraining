@@ -6,6 +6,7 @@ import argparse
 import copy
 import hashlib
 import json
+import math
 import os
 import random
 import re
@@ -14,6 +15,7 @@ import tempfile
 from collections import defaultdict
 from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass
+from datetime import datetime
 from pathlib import Path
 from typing import Any, Literal
 
@@ -233,6 +235,8 @@ def validate_green_sm_ads_data_handoff(config: Mapping[str, Any]) -> dict[str, A
         raise AdConfigurationError("Green SM quality report is not bound to the configured Foundation manifest")
     if ads_manifest.get("schema_version") != "green_sm_ads_opportunities_v1":
         raise AdConfigurationError("Ads manifest has unsupported schema_version")
+    if ads_manifest.get("data_version") != "green_sm_sim_full_v1":
+        raise AdConfigurationError("Ads manifest data_version must be green_sm_sim_full_v1")
     if ads_manifest.get("foundation_manifest_sha256") != expected_foundation_sha:
         raise AdConfigurationError("Ads manifest is not linked to the configured Foundation manifest")
     files = ads_manifest.get("files")
@@ -249,10 +253,26 @@ def validate_green_sm_ads_data_handoff(config: Mapping[str, Any]) -> dict[str, A
         _verify_sha256(ads_root / filename, checksum, label=f"Ads {split} parquet")
     if not ads_root.is_dir() or not foundation_root.is_dir():
         raise AdConfigurationError("configured opportunities_root and foundation_root must be directories")
+    checkpoint = _require_mapping(config, "checkpoint")
+    expected_selected_sha = _require_text(
+        checkpoint, "expected_selected_checkpoint_sha256", prefix="config.checkpoint"
+    )
+    if not _SHA256_RE.fullmatch(expected_selected_sha):
+        raise AdConfigurationError("config.checkpoint.expected_selected_checkpoint_sha256 must be a SHA-256")
+    selected = resolve_selected_foundation_handoff(
+        _require_text(checkpoint, "package_root", prefix="config.checkpoint")
+    )
+    if selected.manifest.get("checkpoint_sha256") != expected_selected_sha:
+        raise AdConfigurationError("selected Foundation checkpoint SHA does not match config")
+    if selected.manifest.get("linked_manifest_sha256") != expected_foundation_sha:
+        raise AdConfigurationError("selected Foundation checkpoint is not bound to configured Foundation manifest")
     return {
         "data_version": "green_sm_sim_full_v1",
         "ads_manifest_sha256": expected_ads_sha,
         "foundation_manifest_sha256": expected_foundation_sha,
+        "selected_kind": selected.selected_kind,
+        "selected_checkpoint_sha256": expected_selected_sha,
+        "vocabulary_sha256": selected.manifest["vocabulary_sha256"],
     }
 
 
@@ -345,6 +365,95 @@ def _integer(value: Any, *, field: str, request_id: str) -> int:
         return int(value)
     except (TypeError, ValueError) as error:
         raise ValueError(f"request_id={request_id!r}: {field} must be an integer") from error
+
+
+def _timestamp(value: Any, *, field: str, request_id: str) -> int:
+    if isinstance(value, datetime):
+        if value.tzinfo is None:
+            raise ValueError(f"request_id={request_id!r}: {field} must include a timezone")
+        return int(value.timestamp())
+    return _integer(value, field=field, request_id=request_id)
+
+
+def _finite_float(value: Any, *, field: str, request_id: str) -> float:
+    if isinstance(value, bool):
+        raise TypeError(f"request_id={request_id!r}: {field} must be finite")
+    try:
+        number = float(value)
+    except (TypeError, ValueError) as error:
+        raise ValueError(f"request_id={request_id!r}: {field} must be finite") from error
+    if not math.isfinite(number):
+        raise ValueError(f"request_id={request_id!r}: {field} must be finite")
+    return number
+
+
+@dataclass(frozen=True)
+class GreenSmAdsOpportunity:
+    """One native Green SM Ads candidate with optional training label."""
+
+    request_id: str
+    user_id: str
+    foundation_sample_id: str
+    cutoff_timestamp: int
+    candidate_id: str
+    campaign_id: str
+    candidate_category: str
+    placement: str
+    candidate_geo_cell: str
+    candidate_lat: float
+    candidate_lon: float
+    candidate_available_timestamp: int
+    exposure_timestamp: int
+    split: str
+    clicked: int | None
+
+    @classmethod
+    def from_mapping(
+        cls, row: Mapping[str, Any], *, require_label: bool
+    ) -> GreenSmAdsOpportunity:
+        request_id = _text(row.get("request_id"), field="request_id")
+        fields = (
+            "user_id", "foundation_sample_id", "candidate_id", "campaign_id",
+            "candidate_category", "placement", "candidate_geo_cell", "split",
+        )
+        values = {
+            field: _text(row.get(field), field=field, request_id=request_id)
+            for field in fields
+        }
+        if values["split"] not in SPLITS:
+            raise ValueError(f"request_id={request_id!r}: unsupported split {values['split']!r}")
+        cutoff = _timestamp(row.get("cutoff_timestamp"), field="cutoff_timestamp", request_id=request_id)
+        available = _timestamp(
+            row.get("candidate_available_timestamp"),
+            field="candidate_available_timestamp", request_id=request_id,
+        )
+        exposure = _timestamp(
+            row.get("exposure_timestamp"), field="exposure_timestamp", request_id=request_id
+        )
+        if available > cutoff or exposure > cutoff:
+            raise ValueError(f"request_id={request_id!r}: candidate timestamps exceed cutoff_timestamp")
+        clicked: int | None = None
+        if require_label:
+            clicked = _integer(row.get("clicked"), field="clicked", request_id=request_id)
+            if clicked not in {0, 1}:
+                raise ValueError(f"request_id={request_id!r}: clicked must be 0 or 1")
+        return cls(
+            request_id=request_id,
+            user_id=values["user_id"],
+            foundation_sample_id=values["foundation_sample_id"],
+            cutoff_timestamp=cutoff,
+            candidate_id=values["candidate_id"],
+            campaign_id=values["campaign_id"],
+            candidate_category=values["candidate_category"],
+            placement=values["placement"],
+            candidate_geo_cell=values["candidate_geo_cell"],
+            candidate_lat=_finite_float(row.get("candidate_lat"), field="candidate_lat", request_id=request_id),
+            candidate_lon=_finite_float(row.get("candidate_lon"), field="candidate_lon", request_id=request_id),
+            candidate_available_timestamp=available,
+            exposure_timestamp=exposure,
+            split=values["split"],
+            clicked=clicked,
+        )
 
 
 @dataclass(frozen=True)

@@ -99,6 +99,54 @@ def _opportunity(**overrides: object) -> AdOpportunity:
     return AdOpportunity.from_mapping(row)
 
 
+def _green_sm_opportunity_row(**overrides: object) -> dict[str, object]:
+    """Literal native Green SM fixture; no Taobao compatibility aliases."""
+
+    timestamp = datetime(2026, 10, 1, tzinfo=timezone.utc)
+    row: dict[str, object] = {
+        "request_id": "ads:train:1",
+        "user_id": "u001",
+        "foundation_sample_id": "green-sm:sample:1",
+        "cutoff_timestamp": timestamp,
+        "candidate_id": "campaign-creative-1",
+        "campaign_id": "campaign-1",
+        "candidate_category": "food",
+        "placement": "home",
+        "candidate_geo_cell": "HCM_Q1",
+        "candidate_lat": 10.7769,
+        "candidate_lon": 106.7009,
+        "candidate_available_timestamp": timestamp,
+        "exposure_timestamp": timestamp,
+        "split": "train",
+        "clicked": 1,
+    }
+    row.update(overrides)
+    return row
+
+
+def test_native_green_sm_opportunity_requires_native_geo_and_hides_label_for_inference() -> None:
+    """Removing native schema support must fail rather than silently routing aliases."""
+
+    row_type = ad_optimization.GreenSmAdsOpportunity
+    training_row = row_type.from_mapping(_green_sm_opportunity_row(), require_label=True)
+    inference_row = row_type.from_mapping(_green_sm_opportunity_row(clicked=0), require_label=False)
+
+    assert training_row.candidate_category == "food"
+    assert training_row.candidate_geo_cell == "HCM_Q1"
+    assert training_row.clicked == 1
+    assert inference_row.clicked is None
+    assert not hasattr(training_row, "cate_id")
+    assert not hasattr(training_row, "pid")
+
+
+def test_native_green_sm_opportunity_rejects_non_finite_location() -> None:
+    """Dropping numeric location validation must be observable at the native boundary."""
+
+    row_type = ad_optimization.GreenSmAdsOpportunity
+    with pytest.raises(ValueError, match="candidate_lat"):
+        row_type.from_mapping(_green_sm_opportunity_row(candidate_lat=float("nan")), require_label=True)
+
+
 def _encoded(sample_id: str = "sample-1", user_id: str = "user-1") -> EncodedSample:
     return EncodedSample(sample_id=sample_id, dataset_name="taobao_display_ads", user_id=user_id, records=())
 
@@ -363,6 +411,108 @@ def test_selected_foundation_handoff_uses_checkpoint_manifest_not_best_filename(
     assert handoff.checkpoint_path == checkpoint
     assert handoff.selected_kind == "last"
     assert handoff.vocabulary_path == vocabulary
+
+
+def _write_green_sm_handoff_config(tmp_path: Path, *, selected_kind: str = "last") -> dict[str, object]:
+    """Build a complete small linked handoff whose expected values are hand-derived."""
+
+    ads_root = tmp_path / "ads"
+    foundation_root = tmp_path / "foundation"
+    report_root = tmp_path / "reports"
+    package_root = tmp_path / "foundation-package"
+    for path in (ads_root, foundation_root, report_root, package_root):
+        path.mkdir()
+    foundation_manifest = foundation_root / "manifest.json"
+    foundation_manifest.write_text(
+        json.dumps({"schema_version": "green_sm_foundation_v3", "status": "complete"}),
+        encoding="utf-8",
+    )
+    files: dict[str, dict[str, object]] = {}
+    for split in ("train", "validation", "test"):
+        path = ads_root / f"ads_opportunities.{split}.parquet"
+        path.write_bytes(f"native-{split}".encode())
+        files[split] = {"file": path.name, "rows": 1, "sha256": _sha256(path)}
+    ads_manifest = ads_root / "manifest.json"
+    ads_manifest.write_text(
+        json.dumps(
+            {
+                "schema_version": "green_sm_ads_opportunities_v1",
+                "data_version": "green_sm_sim_full_v1",
+                "foundation_manifest_sha256": _sha256(foundation_manifest),
+                "files": files,
+            }
+        ),
+        encoding="utf-8",
+    )
+    (report_root / "data_quality_report.json").write_text(
+        json.dumps(
+            {"readiness_passed": True, "foundation_manifest_sha256": _sha256(foundation_manifest)}
+        ),
+        encoding="utf-8",
+    )
+    selected = package_root / f"{selected_kind}.pt"
+    selected.write_bytes(f"selected-{selected_kind}".encode())
+    vocabulary = package_root / "vocabulary.json"
+    vocabulary.write_text('{"schema_version":"fixture"}\n', encoding="utf-8")
+    (package_root / "checkpoint_manifest.json").write_text(
+        json.dumps(
+            {
+                "schema_version": "green_sm_foundation_checkpoint_v1",
+                "checkpoint_format_version": 1,
+                "selected_kind": selected_kind,
+                "checkpoint": selected.name,
+                "checkpoint_sha256": _sha256(selected),
+                "vocabulary_sha256": _sha256(vocabulary),
+                "linked_manifest_sha256": _sha256(foundation_manifest),
+                "control_manifest_sha256": "c" * 64,
+                "config_digest": "d" * 64,
+                "corpus": "linked",
+            }
+        ),
+        encoding="utf-8",
+    )
+    return {
+        "task": "ad_optimization",
+        "freeze_foundation": True,
+        "data": {
+            "data_version": "green_sm_sim_full_v1",
+            "corpus": "linked",
+            "opportunities_root": str(ads_root),
+            "manifest_path": str(ads_manifest),
+            "foundation_root": str(foundation_root),
+            "foundation_manifest_path": str(foundation_manifest),
+            "quality_report_path": str(report_root / "data_quality_report.json"),
+            "expected_ads_manifest_sha256": _sha256(ads_manifest),
+            "expected_foundation_manifest_sha256": _sha256(foundation_manifest),
+        },
+        "checkpoint": {
+            "package_root": str(package_root),
+            "expected_selected_checkpoint_sha256": _sha256(selected),
+        },
+    }
+
+
+def test_green_sm_validate_binds_the_manifest_selected_last_checkpoint(tmp_path: Path) -> None:
+    """Changing selected checkpoint identity must stop validate before a model can load."""
+
+    report = ad_optimization.validate_green_sm_ads_data_handoff(
+        _write_green_sm_handoff_config(tmp_path, selected_kind="last")
+    )
+
+    assert report["selected_kind"] == "last"
+    assert report["selected_checkpoint_sha256"] == _sha256(tmp_path / "foundation-package" / "last.pt")
+
+
+def test_green_sm_validate_rejects_placeholder_selected_checkpoint_sha(tmp_path: Path) -> None:
+    """A placeholder must never let a full-corpus Kaggle run reach model construction."""
+
+    config = _write_green_sm_handoff_config(tmp_path)
+    checkpoint = dict(config["checkpoint"])
+    checkpoint["expected_selected_checkpoint_sha256"] = "replace-with-selected-foundation-checkpoint-sha256"
+    config["checkpoint"] = checkpoint
+
+    with pytest.raises(ValueError, match="must be a SHA-256"):
+        ad_optimization.validate_green_sm_ads_data_handoff(config)
 
 
 def test_green_sm_ads_handoff_rejects_nonpassing_quality_report(tmp_path: Path) -> None:
