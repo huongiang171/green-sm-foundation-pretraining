@@ -24,7 +24,7 @@ def test_kaggle_evaluation_notebook_only_invokes_committed_cli() -> None:
     assert "artifact_task(directory) == task" in code
 
 
-def test_food_kaggle_evaluation_notebook_uses_two_inputs_and_bounded_discovery() -> None:
+def test_food_kaggle_evaluation_notebook_accepts_zip_or_extracted_run_artifacts() -> None:
     notebook_path = Path("notebooks/food_evaluation_kaggle.ipynb")
     notebook = json.loads(notebook_path.read_text(encoding="utf-8"))
     code = "\n".join("".join(cell["source"]) for cell in notebook["cells"] if cell["cell_type"] == "code")
@@ -32,6 +32,8 @@ def test_food_kaggle_evaluation_notebook_uses_two_inputs_and_bounded_discovery()
     assert ".rglob(" not in code
     assert "green_sm_food_poc20_v1" in code
     assert "green_sm_food_poc20_v1_r1.zip" in code
+    assert "run_manifest.json" in code
+    assert "RUN_ROOT" in code
     assert "zipfile.ZipFile" in code
     assert "feat/food-poc-accelerated" in code
     assert "-m', 'src.evaluation'" in code
