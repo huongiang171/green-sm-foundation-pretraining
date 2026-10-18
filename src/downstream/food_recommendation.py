@@ -395,7 +395,10 @@ def resolve_green_sm_food_samples(
     tokenizer = load_green_sm_tokenizer_config(foundation_root)
     dataset_config = DatasetConfig(max_tokens=max_tokens)
     found: dict[str, EncodedSample] = {}
-    for canonical in iter_normalized_samples(foundation_root, split, validate=True):
+    requested_users = {opportunity.user_id for opportunity in by_sample.values()}
+    for canonical in iter_normalized_samples(
+        foundation_root, split, validate=True, user_ids=requested_users
+    ):
         opportunity = by_sample.get(canonical.sample_id)
         if opportunity is None:
             continue
@@ -550,6 +553,26 @@ class FoodBatch:
     positive_mask: torch.BoolTensor
     candidate_mask: torch.BoolTensor
     opportunities: tuple[tuple[FoodOpportunity, ...], ...]
+
+
+@dataclass(frozen=True)
+class CachedFoodBatch:
+    """One request-major batch with frozen user states retained on CPU.
+
+    Caching removes repeated Foundation forward passes from FoodRanker epochs,
+    while candidate tensors remain exactly the same as their source batch.
+    """
+
+    long_term: torch.FloatTensor
+    short_term: torch.FloatTensor
+    item_hash_ids: torch.LongTensor
+    merchant_hash_ids: torch.LongTensor
+    category_ids: torch.LongTensor
+    geo_cell_ids: torch.LongTensor
+    price_values: torch.FloatTensor
+    geo_values: torch.FloatTensor
+    positive_mask: torch.BoolTensor
+    candidate_mask: torch.BoolTensor
 
 
 def _group_requests(rows: Sequence[FoodOpportunity]) -> tuple[tuple[FoodOpportunity, ...], ...]:
@@ -807,17 +830,80 @@ def _atomic_torch_save(path: Path, value: Mapping[str, Any]) -> None:
     os.replace(temporary, path)
 
 
-def _mean_food_loss(
-    embedder: Any, ranker: FoodRanker, batches: Sequence[FoodBatch], device: torch.device
+def _atomic_text(path: Path, value: str) -> None:
+    temporary = path.with_suffix(path.suffix + ".tmp")
+    temporary.write_text(value, encoding="utf-8")
+    os.replace(temporary, path)
+
+
+def _cache_food_embeddings(
+    embedder: Any,
+    batches: Sequence[FoodBatch],
+    device: torch.device,
+    *,
+    stage: str,
+) -> tuple[CachedFoodBatch, ...]:
+    """Evaluate a frozen Foundation exactly once per Food batch."""
+
+    print(f"Food Foundation cache: {stage} | batches={len(batches)} | start", flush=True)
+    embedder.to(device)
+    embedder.eval()
+    for parameter in embedder.parameters():
+        parameter.requires_grad_(False)
+
+    cached: list[CachedFoodBatch] = []
+    progress_interval = max(1, len(batches) // 10)
+    with torch.no_grad():
+        for batch_index, batch in enumerate(batches, start=1):
+            moved = _to_device_food_batch(batch, device)
+            embeddings = embedder.embed_users(moved.foundation_batch)
+            cached.append(
+                CachedFoodBatch(
+                    long_term=embeddings["long_term"].detach().cpu(),
+                    short_term=embeddings["short_term"].detach().cpu(),
+                    item_hash_ids=batch.item_hash_ids,
+                    merchant_hash_ids=batch.merchant_hash_ids,
+                    category_ids=batch.category_ids,
+                    geo_cell_ids=batch.geo_cell_ids,
+                    price_values=batch.price_values,
+                    geo_values=batch.geo_values,
+                    positive_mask=batch.positive_mask,
+                    candidate_mask=batch.candidate_mask,
+                )
+            )
+            if batch_index % progress_interval == 0 or batch_index == len(batches):
+                print(
+                    f"Food Foundation cache: {stage} | batch {batch_index}/{len(batches)}",
+                    flush=True,
+                )
+    return tuple(cached)
+
+
+def _cached_food_logits(
+    ranker: FoodRanker, batch: CachedFoodBatch, device: torch.device
+) -> torch.Tensor:
+    return ranker(
+        batch.long_term.to(device),
+        batch.short_term.to(device),
+        item_hash_ids=batch.item_hash_ids.to(device),
+        merchant_hash_ids=batch.merchant_hash_ids.to(device),
+        category_ids=batch.category_ids.to(device),
+        geo_cell_ids=batch.geo_cell_ids.to(device),
+        price_values=batch.price_values.to(device),
+        geo_values=batch.geo_values.to(device),
+    )
+
+
+def _mean_cached_food_loss(
+    ranker: FoodRanker, batches: Sequence[CachedFoodBatch], device: torch.device
 ) -> float:
     ranker.eval()
     losses: list[float] = []
     with torch.no_grad():
         for batch in batches:
-            moved = _to_device_food_batch(batch, device)
-            scores = frozen_foundation_food_logits(embedder, ranker, moved)
+            scores = _cached_food_logits(ranker, batch, device)
             loss, _ = masked_multi_positive_listwise_loss(
-                scores, moved.positive_mask, moved.candidate_mask
+                scores, batch.positive_mask.to(device), batch.candidate_mask.to(device)
             )
             losses.append(float(loss.item()))
     if not losses:
@@ -850,11 +936,13 @@ def train_food_ranker(
         raise ValueError(f"Food run directory must be new and empty: {destination}")
     destination.mkdir(parents=True, exist_ok=True)
     resolved_device = torch.device(device)
-    embedder.to(resolved_device)
-    embedder.eval()
-    for parameter in embedder.parameters():
-        parameter.requires_grad_(False)
     ranker.to(resolved_device)
+    cached_train_batches = _cache_food_embeddings(
+        embedder, train_batches, resolved_device, stage="train"
+    )
+    cached_validation_batches = _cache_food_embeddings(
+        embedder, validation_batches, resolved_device, stage="validation"
+    )
     optimizer = torch.optim.AdamW(ranker.parameters(), lr=learning_rate, weight_decay=weight_decay)
     feature_path = destination / "feature_artifacts.json"
     feature_artifacts.save(feature_path)
@@ -864,17 +952,16 @@ def train_food_ranker(
     for epoch in range(1, epochs + 1):
         ranker.train()
         train_losses: list[float] = []
-        for batch in train_batches:
-            moved = _to_device_food_batch(batch, resolved_device)
+        for batch in cached_train_batches:
             optimizer.zero_grad(set_to_none=True)
-            scores = frozen_foundation_food_logits(embedder, ranker, moved)
+            scores = _cached_food_logits(ranker, batch, resolved_device)
             loss, _ = masked_multi_positive_listwise_loss(
-                scores, moved.positive_mask, moved.candidate_mask
+                scores, batch.positive_mask.to(resolved_device), batch.candidate_mask.to(resolved_device)
             )
             loss.backward()
             optimizer.step()
             train_losses.append(float(loss.detach().item()))
-        validation_loss = _mean_food_loss(embedder, ranker, validation_batches, resolved_device)
+        validation_loss = _mean_cached_food_loss(ranker, cached_validation_batches, resolved_device)
         metrics.append({
             "epoch": epoch,
             "train_listwise_loss": sum(train_losses) / len(train_losses),
@@ -886,10 +973,15 @@ def train_food_ranker(
             best_validation = validation_loss
             best_epoch = epoch
             _atomic_torch_save(destination / "best.pt", payload)
+        metrics_path = destination / "train_metrics.jsonl"
+        _atomic_text(metrics_path, "".join(json.dumps(row, sort_keys=True) + "\n" for row in metrics))
+        print(
+            f"Food epoch {epoch}/{epochs} | "
+            f"train_listwise_loss={metrics[-1]['train_listwise_loss']:.6f} | "
+            f"validation_listwise_loss={validation_loss:.6f}",
+            flush=True,
+        )
     metrics_path = destination / "train_metrics.jsonl"
-    metrics_path.write_text(
-        "".join(json.dumps(row, sort_keys=True) + "\n" for row in metrics), encoding="utf-8"
-    )
     manifest = {
         **dict(run_metadata),
         "schema_version": "green_sm_food_ranker_v1",
@@ -969,6 +1061,7 @@ def _food_model_settings(config: Mapping[str, Any]) -> tuple[Mapping[str, Any], 
 def run_food_training(config: Mapping[str, Any]) -> dict[str, Any]:
     """Run a checksum-gated Food train/validation lifecycle from one YAML config."""
 
+    print("Food training: validating immutable data handoff", flush=True)
     handoff = validate_food_data_handoff(config)
     model_settings, training = _food_model_settings(config)
     seed = config.get("seed")
@@ -978,6 +1071,7 @@ def run_food_training(config: Mapping[str, Any]) -> dict[str, Any]:
     device = str(training.get("device", "cpu"))
     if device.startswith("cuda") and not torch.cuda.is_available():
         raise FoodConfigurationError("CUDA was requested for Food training but is unavailable")
+    print(f"Food training: loading verified Foundation checkpoint on {device}", flush=True)
     embedder, foundation_checkpoint_manifest = _load_verified_foundation(config, device=device)
     data = _mapping(config.get("data"), label="config.data")
     verify_foundation_checkpoint_binding(
@@ -992,10 +1086,16 @@ def run_food_training(config: Mapping[str, Any]) -> dict[str, Any]:
     if not isinstance(max_tokens, int) or max_tokens < 3:
         raise FoodConfigurationError("config.data.max_tokens must be an integer >= 3")
     training_splits: tuple[FoodSplit, FoodSplit] = ("train", "validation")
+    print("Food training: loading train and validation opportunities", flush=True)
     rows = {
         split: load_green_sm_food_opportunities(food_root, split=split)
         for split in training_splits
     }
+    print(
+        "Food training: resolving causal Foundation snapshots "
+        f"(train_rows={len(rows['train'])}, validation_rows={len(rows['validation'])})",
+        flush=True,
+    )
     samples = {
         split: resolve_green_sm_food_samples(
             rows[split], foundation_root=foundation_root, vocabulary_path=vocabulary_path,
@@ -1003,6 +1103,7 @@ def run_food_training(config: Mapping[str, Any]) -> dict[str, Any]:
         )
         for split in training_splits
     }
+    print("Food training: fitting candidate feature artifacts and building batches", flush=True)
     features = FoodFeatureArtifacts.fit(rows["train"])
     batch_size = int(training["batch_size"])
     item_buckets = int(model_settings["item_hash_buckets"])
@@ -1035,6 +1136,11 @@ def run_food_training(config: Mapping[str, Any]) -> dict[str, Any]:
         "train_request_count": len(_group_requests(rows["train"])),
         "validation_request_count": len(_group_requests(rows["validation"])),
     }
+    print(
+        f"Food training: starting ranker epochs={training['epochs']} "
+        f"train_batches={len(train_batches)} validation_batches={len(validation_batches)}",
+        flush=True,
+    )
     return train_food_ranker(
         embedder=embedder, ranker=ranker, train_batches=train_batches, validation_batches=validation_batches,
         feature_artifacts=features, run_dir=run_dir, epochs=int(training["epochs"]),

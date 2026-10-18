@@ -283,11 +283,16 @@ def test_food_snapshot_resolution_returns_only_exact_matching_sample(
     from src.downstream.food_recommendation import resolve_green_sm_food_samples
 
     encoded = _encoded_samples_by_id()["foundation-1"]
-    _patch_food_snapshot_dependencies(
-        monkeypatch,
-        [_canonical(), _canonical(sample_id="unreferenced")],
-        encoded,
-    )
+    import src.downstream.food_recommendation as food
+
+    _patch_food_snapshot_dependencies(monkeypatch, [_canonical(), _canonical(sample_id="unreferenced")], encoded)
+    received: dict[str, object] = {}
+
+    def iter_with_capture(*_args, **kwargs):
+        received.update(kwargs)
+        return iter([_canonical(), _canonical(sample_id="unreferenced")])
+
+    monkeypatch.setattr(food, "iter_normalized_samples", iter_with_capture)
 
     resolved = resolve_green_sm_food_samples(
         _labelled_food_request(foundation_sample_id="s1"),
@@ -298,6 +303,7 @@ def test_food_snapshot_resolution_returns_only_exact_matching_sample(
     )
 
     assert resolved == {"s1": encoded}
+    assert received["user_ids"] == {"user-1"}
 
 
 def _food_features() -> dict[str, torch.Tensor]:
@@ -352,8 +358,10 @@ class _StubFoundation(torch.nn.Module):
     def __init__(self) -> None:
         super().__init__()
         self.scale = torch.nn.Parameter(torch.tensor(1.0))
+        self.embed_call_count = 0
 
     def embed_users(self, _foundation_batch: object) -> dict[str, torch.Tensor]:
+        self.embed_call_count += 1
         return {
             "long_term": self.scale * torch.ones(1, 4),
             "short_term": self.scale * torch.zeros(1, 4),
@@ -494,8 +502,8 @@ def test_food_cli_runs_training_and_test_export(
     assert '"status": "food_prediction_exported"' in capsys.readouterr().out
 
 
-def test_food_train_runner_freezes_foundation_and_writes_reloadable_artifacts(
-    tmp_path: Path,
+def test_food_train_runner_caches_frozen_embeddings_once_and_streams_epoch_progress(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
     from src.downstream.food_recommendation import (
         FoodFeatureArtifacts,
@@ -544,6 +552,13 @@ def test_food_train_runner_freezes_foundation_and_writes_reloadable_artifacts(
     assert (tmp_path / "food-run" / "last.pt").is_file()
     assert (tmp_path / "food-run" / "run_manifest.json").is_file()
     assert all(parameter.grad is None for parameter in embedder.parameters())
+    # The frozen Foundation is evaluated once for train and once for validation,
+    # rather than once per split for every epoch.
+    assert embedder.embed_call_count == len(batches) * 2
+    progress = capsys.readouterr().out
+    assert "Food Foundation cache: train" in progress
+    assert "Food Foundation cache: validation" in progress
+    assert "Food epoch 2/2" in progress
 
 
 def test_food_ranker_loader_verifies_and_restores_best_checkpoint(tmp_path: Path) -> None:
