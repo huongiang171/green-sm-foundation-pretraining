@@ -17,3 +17,6 @@ def test_full_food_notebook_uses_bounded_input_discovery_and_prints_progress() -
     assert "Food handoff validation passed" in code
     assert "Food training starts now" in code
     assert "'-u'" in code
+    assert "subprocess.Popen" in code
+    assert "stdout=subprocess.PIPE" in code
+    assert "for line in process.stdout" in code
