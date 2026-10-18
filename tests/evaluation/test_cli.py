@@ -24,6 +24,21 @@ def test_kaggle_evaluation_notebook_only_invokes_committed_cli() -> None:
     assert "artifact_task(directory) == task" in code
 
 
+def test_food_kaggle_evaluation_notebook_uses_two_inputs_and_bounded_discovery() -> None:
+    notebook_path = Path("notebooks/food_evaluation_kaggle.ipynb")
+    notebook = json.loads(notebook_path.read_text(encoding="utf-8"))
+    code = "\n".join("".join(cell["source"]) for cell in notebook["cells"] if cell["cell_type"] == "code")
+
+    assert ".rglob(" not in code
+    assert "green_sm_food_poc20_v1" in code
+    assert "green_sm_food_poc20_v1_r1.zip" in code
+    assert "zipfile.ZipFile" in code
+    assert "feat/food-poc-accelerated" in code
+    assert "-m', 'src.evaluation'" in code
+    assert "food_recommendation" in code
+    assert "ad_optimization" not in code
+
+
 def test_cli_evaluates_then_compares_reports(food_opportunities_root: Path, tmp_path: Path, capsys) -> None:
     prediction_dir = write_baseline_prediction_dir(tmp_path, food_opportunities_root)
     first = tmp_path / "first.json"
