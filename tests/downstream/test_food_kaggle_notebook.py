@@ -16,3 +16,4 @@ def test_full_food_notebook_uses_bounded_input_discovery_and_prints_progress() -
     assert "kaggle_dataset_roots" in code
     assert "Food handoff validation passed" in code
     assert "Food training starts now" in code
+    assert "'-u'" in code
