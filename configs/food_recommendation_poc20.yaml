@@ -1,0 +1,33 @@
+# Kaggle PoC recipe: a 20% derived train/validation Food universe and the full test universe.
+seed: 42
+task: food_recommendation
+freeze_foundation: true
+data:
+  data_version: green_sm_sim_full_v1
+  opportunities_root: /kaggle/input/replace-with-food-poc/green_sm_food_poc20_v1/food_opportunities
+  manifest_path: /kaggle/input/replace-with-food-poc/green_sm_food_poc20_v1/food_opportunities/manifest.json
+  foundation_root: /kaggle/input/replace-with-full-corpus/green_sm_sim_full_v1/green_sm_sim_linked_v1/foundation
+  foundation_manifest_path: /kaggle/input/replace-with-full-corpus/green_sm_sim_full_v1/green_sm_sim_linked_v1/foundation/manifest.json
+  foundation_corpus: linked
+  vocabulary_path: /kaggle/input/replace-with-foundation-checkpoint/green_sm_full_v1_checkpoint/vocabulary.json
+  expected_food_manifest_sha256: replace-with-food-poc-manifest-sha256
+  expected_foundation_manifest_sha256: replace-with-foundation-manifest-sha256
+  max_tokens: 256
+checkpoint:
+  path: /kaggle/input/replace-with-foundation-checkpoint/green_sm_full_v1_checkpoint/best.pt
+  manifest_path: /kaggle/input/replace-with-foundation-checkpoint/green_sm_full_v1_checkpoint/best_manifest.json
+  expected_sha256: replace-with-foundation-checkpoint-sha256
+ranker:
+  run_dir: /kaggle/working/artifacts/food/replace-with-food-poc-run-id
+  expected_run_manifest_sha256: replace-with-food-run-manifest-sha256
+model:
+  dropout: 0.1
+  item_hash_buckets: 65536
+  merchant_hash_buckets: 16384
+training:
+  device: cuda
+  batch_size: 16
+  epochs: 6
+  learning_rate: 0.0003
+  weight_decay: 0.00001
+  artifact_dir: /kaggle/working/artifacts/food

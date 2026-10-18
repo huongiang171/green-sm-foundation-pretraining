@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import json
-from collections.abc import Iterator
+from collections.abc import Collection, Iterator
 from datetime import datetime
 from pathlib import Path
 from typing import Any
@@ -241,13 +241,22 @@ def iter_normalized_samples(
     split: str,
     *,
     validate: bool = True,
+    user_ids: Collection[str] | None = None,
 ) -> Iterator[CanonicalSample]:
-    """Yield canonical samples from one logical split without modifying source data."""
+    """Yield canonical samples from one logical split without modifying source data.
+
+    ``user_ids`` is an optional shard-level read filter. Every published
+    Foundation shard belongs to one declared user, so it cannot change a
+    selected user's history or snapshot.
+    """
 
     if split not in {"train", "validation", "test"}:
         raise ValueError(f"Invalid split: {split!r}")
+    requested_users = None if user_ids is None else frozenset(str(user_id) for user_id in user_ids)
     manifest = load_manifest(dataset_root, validate_shard_files=False)
     for shard in manifest.shards:
+        if requested_users is not None and str(shard["user_id"]) not in requested_users:
+            continue
         if not shard["snapshots_by_split"].get(split, 0):
             continue
         snapshot_path = manifest.root / shard["snapshots_file"]

@@ -300,6 +300,34 @@ def test_food_snapshot_resolution_returns_only_exact_matching_sample(
     assert resolved == {"s1": encoded}
 
 
+def test_food_snapshot_resolution_limits_loader_to_requested_users(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import src.downstream.food_recommendation as food
+    from src.downstream.food_recommendation import resolve_green_sm_food_samples
+
+    captured: dict[str, object] = {}
+
+    def fake_samples(*_args, **kwargs):
+        captured.update(kwargs)
+        return iter([_canonical()])
+
+    monkeypatch.setattr(food, "load_green_sm_tokenizer_config", lambda _root: "tokenizer")
+    monkeypatch.setattr(food.VocabularyArtifacts, "load", lambda _path: "vocabulary")
+    monkeypatch.setattr(food, "iter_normalized_samples", fake_samples)
+    monkeypatch.setattr(food, "encode_sample", lambda *_args: _encoded_samples_by_id()["foundation-1"])
+
+    resolve_green_sm_food_samples(
+        _labelled_food_request(foundation_sample_id="s1"),
+        foundation_root="unused",
+        vocabulary_path="unused",
+        split="train",
+        max_tokens=32,
+    )
+
+    assert captured["user_ids"] == {"user-1"}
+
+
 def _food_features() -> dict[str, torch.Tensor]:
     return {
         "item_hash_ids": torch.tensor([[1, 2, 0], [3, 4, 5]]),
@@ -352,8 +380,10 @@ class _StubFoundation(torch.nn.Module):
     def __init__(self) -> None:
         super().__init__()
         self.scale = torch.nn.Parameter(torch.tensor(1.0))
+        self.calls = 0
 
     def embed_users(self, _foundation_batch: object) -> dict[str, torch.Tensor]:
+        self.calls += 1
         return {
             "long_term": self.scale * torch.ones(1, 4),
             "short_term": self.scale * torch.zeros(1, 4),
@@ -544,6 +574,55 @@ def test_food_train_runner_freezes_foundation_and_writes_reloadable_artifacts(
     assert (tmp_path / "food-run" / "last.pt").is_file()
     assert (tmp_path / "food-run" / "run_manifest.json").is_file()
     assert all(parameter.grad is None for parameter in embedder.parameters())
+
+
+def test_food_train_runner_caches_frozen_embeddings_and_reports_each_epoch(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    from src.downstream.food_recommendation import (
+        FoodFeatureArtifacts,
+        FoodRanker,
+        build_food_batches,
+        train_food_ranker,
+    )
+
+    rows = _train_rows()
+    features = FoodFeatureArtifacts.fit(rows)
+    batches = build_food_batches(
+        rows,
+        encoded_samples_by_id=_encoded_samples_by_id(),
+        feature_artifacts=features,
+        batch_size=1,
+        item_hash_buckets=11,
+        merchant_hash_buckets=13,
+        require_labels=True,
+    )
+    embedder = _StubFoundation()
+    run_dir = tmp_path / "food-cache-run"
+    train_food_ranker(
+        embedder=embedder,
+        ranker=FoodRanker(
+            d_model=4,
+            item_hash_buckets=11,
+            merchant_hash_buckets=13,
+            num_categories=3,
+            num_geo_cells=3,
+            dropout=0.0,
+        ),
+        train_batches=batches,
+        validation_batches=batches,
+        feature_artifacts=features,
+        run_dir=run_dir,
+        epochs=2,
+        learning_rate=1e-3,
+        weight_decay=0.0,
+        device="cpu",
+        run_metadata={"run_id": "food-cache", "selected_checkpoint_sha256": "foundation"},
+    )
+
+    assert embedder.calls == len(batches) * 2
+    assert len((run_dir / "train_metrics.jsonl").read_text(encoding="utf-8").splitlines()) == 2
+    assert "Food epoch 1/2" in capsys.readouterr().out
 
 
 def test_food_ranker_loader_verifies_and_restores_best_checkpoint(tmp_path: Path) -> None:
