@@ -11,11 +11,11 @@ def _notebook_code(path: Path) -> str:
     return "\n".join("".join(cell.get("source", [])) for cell in notebook["cells"])
 
 
-def test_food_poc_notebook_uses_shallow_input_discovery_and_poc_config() -> None:
+def test_food_poc_notebook_discovers_standard_and_nested_kaggle_input_mounts() -> None:
     code = _notebook_code(Path("notebooks/food_recommendation_kaggle.ipynb"))
 
     assert ".rglob(" not in code
-    assert "INPUT_ROOT.iterdir()" in code
+    assert "INPUT_ROOT.glob(\"*/*/*\")" in code
     assert "green_sm_food_poc20_v1" in code
     assert "food_recommendation_poc20.yaml" in code
     assert "feat/food-poc-accelerated" in code
