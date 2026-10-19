@@ -112,3 +112,12 @@ def test_shared_signal_poc_builds_one_snapshot_per_request_and_exact_cold_reques
         "food": {"validation": pytest.approx(0.15), "test": pytest.approx(0.15)},
         "ads": {"validation": pytest.approx(0.15), "test": pytest.approx(0.15)},
     }
+
+
+def test_shared_signal_poc_runbook_defines_the_required_comparison() -> None:
+    runbook = Path("docs/shared-signal-poc-runbook.md").read_text(encoding="utf-8")
+
+    assert "pretrained mixed" in runbook
+    assert "random frozen" in runbook
+    assert "cross-service ablation" in runbook
+    assert "validation" in runbook and "test" in runbook
