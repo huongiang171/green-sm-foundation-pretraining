@@ -24,3 +24,5 @@ def test_full_food_notebook_uses_bounded_input_discovery_and_prints_progress() -
     assert "base64.b64decode" in code
     assert "tarfile.open" in code
     assert "Food runtime extraction" in code
+    assert "Path('/tmp/green_sm_food_runtime')" in code
+    assert "Path('/kaggle/working/food_runtime')" not in code
