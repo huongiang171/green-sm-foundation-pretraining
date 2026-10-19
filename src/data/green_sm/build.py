@@ -388,6 +388,7 @@ def _write_opportunities(
     rows: Mapping[str, list[dict[str, object]]],
     *,
     task: str,
+    data_version: str,
     foundation_manifest_sha256: str,
 ) -> None:
     task_root = root / f"{task}_opportunities"
@@ -400,6 +401,7 @@ def _write_opportunities(
         task_root / "manifest.json",
         {
             "schema_version": f"green_sm_{task}_opportunities_v1",
+            "data_version": data_version,
             "foundation_manifest_sha256": foundation_manifest_sha256,
             "files": files,
         },
@@ -447,8 +449,20 @@ def build_dataset(config: GreenSmConfig) -> dict[str, object]:
         foundation_root, maximum = _write_foundation(config, world, view, root / "foundation", specs)
         max_tokens = max(max_tokens, maximum)
         manifest_sha256 = _sha256(foundation_root / "manifest.json")
-        _write_opportunities(root, food_rows, task="food", foundation_manifest_sha256=manifest_sha256)
-        _write_opportunities(root, ads_rows, task="ads", foundation_manifest_sha256=manifest_sha256)
+        _write_opportunities(
+            root,
+            food_rows,
+            task="food",
+            data_version=config.data_version,
+            foundation_manifest_sha256=manifest_sha256,
+        )
+        _write_opportunities(
+            root,
+            ads_rows,
+            task="ads",
+            data_version=config.data_version,
+            foundation_manifest_sha256=manifest_sha256,
+        )
         roots[name] = str(foundation_root)
     if max_tokens > config.max_tokens:
         raise ValueError(f"generated sample exceeds max_tokens={config.max_tokens}: {max_tokens}")

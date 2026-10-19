@@ -30,6 +30,7 @@ def food_opportunities_root(tmp_path: Path) -> Path:
             "candidate_id": "food-a",
             "split": "test",
             "is_positive": 1,
+            "evaluation_group": "warm",
         },
         {
             "request_id": "food-test-1",
@@ -38,6 +39,7 @@ def food_opportunities_root(tmp_path: Path) -> Path:
             "candidate_id": "food-b",
             "split": "test",
             "is_positive": 0,
+            "evaluation_group": "warm",
         },
     ]
     split_path = root / "food_opportunities.test.parquet"

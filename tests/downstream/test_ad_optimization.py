@@ -619,7 +619,9 @@ def test_selected_foundation_handoff_uses_checkpoint_manifest_not_best_filename(
     assert handoff.vocabulary_path == vocabulary
 
 
-def _write_green_sm_handoff_config(tmp_path: Path, *, selected_kind: str = "last") -> dict[str, object]:
+def _write_green_sm_handoff_config(
+    tmp_path: Path, *, selected_kind: str = "last", data_version: str = "green_sm_sim_full_v1"
+) -> dict[str, object]:
     """Build a complete small linked handoff whose expected values are hand-derived."""
 
     ads_root = tmp_path / "ads"
@@ -643,7 +645,7 @@ def _write_green_sm_handoff_config(tmp_path: Path, *, selected_kind: str = "last
         json.dumps(
             {
                 "schema_version": "green_sm_ads_opportunities_v1",
-                "data_version": "green_sm_sim_full_v1",
+                "data_version": data_version,
                 "foundation_manifest_sha256": _sha256(foundation_manifest),
                 "files": files,
             }
@@ -681,7 +683,7 @@ def _write_green_sm_handoff_config(tmp_path: Path, *, selected_kind: str = "last
         "task": "ad_optimization",
         "freeze_foundation": True,
         "data": {
-            "data_version": "green_sm_sim_full_v1",
+            "data_version": data_version,
             "corpus": "linked",
             "opportunities_root": str(ads_root),
             "manifest_path": str(ads_manifest),
@@ -709,8 +711,8 @@ def test_green_sm_validate_binds_the_manifest_selected_last_checkpoint(tmp_path:
     assert report["selected_checkpoint_sha256"] == _sha256(tmp_path / "foundation-package" / "last.pt")
 
 
-def test_green_sm_validate_accepts_published_manifest_without_data_version(tmp_path: Path) -> None:
-    """The immutable published Ads v1 manifest omits an optional data-version field."""
+def test_green_sm_validate_rejects_manifest_without_declared_data_version(tmp_path: Path) -> None:
+    """A downstream handoff cannot accept an unversioned opportunity manifest."""
 
     config = _write_green_sm_handoff_config(tmp_path)
     manifest_path = tmp_path / "ads" / "manifest.json"
@@ -721,10 +723,16 @@ def test_green_sm_validate_accepts_published_manifest_without_data_version(tmp_p
     data["expected_ads_manifest_sha256"] = _sha256(manifest_path)
     config["data"] = data
 
-    report = ad_optimization.validate_green_sm_ads_data_handoff(config)
+    with pytest.raises(ValueError, match="data_version"):
+        ad_optimization.validate_green_sm_ads_data_handoff(config)
 
-    assert report["data_version"] == "green_sm_sim_full_v1"
-    assert report["selected_kind"] == "last"
+
+def test_green_sm_validate_accepts_shared_signal_poc_data_version(tmp_path: Path) -> None:
+    report = ad_optimization.validate_green_sm_ads_data_handoff(
+        _write_green_sm_handoff_config(tmp_path, data_version="green_sm_shared_signal_poc_v1")
+    )
+
+    assert report["data_version"] == "green_sm_shared_signal_poc_v1"
 
 
 def test_green_sm_validate_rejects_placeholder_selected_checkpoint_sha(tmp_path: Path) -> None:

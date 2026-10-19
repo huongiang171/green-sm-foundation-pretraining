@@ -216,13 +216,12 @@ def validate_ads_data_handoff(config: Mapping[str, Any]) -> dict[str, Any]:
 
 
 def validate_green_sm_ads_data_handoff(config: Mapping[str, Any]) -> dict[str, Any]:
-    """Validate the immutable full linked Green SM Ads handoff before training."""
+    """Validate an immutable linked Green SM Ads handoff before training."""
 
     if config.get("task") != "ad_optimization" or config.get("freeze_foundation") is not True:
         raise AdConfigurationError("Green SM Ads requires task='ad_optimization' and freeze_foundation=true")
     data = _require_mapping(config, "data")
-    if _require_text(data, "data_version", prefix="config.data") != "green_sm_sim_full_v1":
-        raise AdConfigurationError("Green SM Ads requires data_version='green_sm_sim_full_v1'")
+    data_version = _require_text(data, "data_version", prefix="config.data")
     if _require_text(data, "corpus", prefix="config.data") != "linked":
         raise AdConfigurationError("Green SM Ads requires data.corpus='linked'")
     ads_root = Path(_require_text(data, "opportunities_root", prefix="config.data"))
@@ -243,8 +242,8 @@ def validate_green_sm_ads_data_handoff(config: Mapping[str, Any]) -> dict[str, A
     if ads_manifest.get("schema_version") != "green_sm_ads_opportunities_v1":
         raise AdConfigurationError("Ads manifest has unsupported schema_version")
     manifest_data_version = ads_manifest.get("data_version")
-    if manifest_data_version is not None and manifest_data_version != "green_sm_sim_full_v1":
-        raise AdConfigurationError("Ads manifest data_version must be green_sm_sim_full_v1")
+    if manifest_data_version != data_version:
+        raise AdConfigurationError("Ads manifest data_version does not match config.data.data_version")
     if ads_manifest.get("foundation_manifest_sha256") != expected_foundation_sha:
         raise AdConfigurationError("Ads manifest is not linked to the configured Foundation manifest")
     files = ads_manifest.get("files")
@@ -275,7 +274,7 @@ def validate_green_sm_ads_data_handoff(config: Mapping[str, Any]) -> dict[str, A
     if selected.manifest.get("linked_manifest_sha256") != expected_foundation_sha:
         raise AdConfigurationError("selected Foundation checkpoint is not bound to configured Foundation manifest")
     return {
-        "data_version": "green_sm_sim_full_v1",
+        "data_version": data_version,
         "ads_manifest_sha256": expected_ads_sha,
         "foundation_manifest_sha256": expected_foundation_sha,
         "selected_kind": selected.selected_kind,

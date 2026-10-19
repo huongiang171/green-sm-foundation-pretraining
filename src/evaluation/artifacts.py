@@ -260,6 +260,17 @@ def load_verified_predictions(
         labels_by_candidate[key] = int(raw_label)
     if set(labels_by_candidate) != set(predictions):
         raise EvaluationArtifactError("Opportunity labels do not match verified candidate universe")
+    schema_names = set(pq.read_schema(source_path).names)
+    evaluation_groups: dict[str, str] = {}
+    if "evaluation_group" in schema_names:
+        for row in pq.read_table(source_path, columns=["request_id", "evaluation_group"]).to_pylist():
+            request_id = str(row["request_id"])
+            group = str(row["evaluation_group"])
+            if group not in {"warm", "cold"}:
+                raise EvaluationArtifactError("evaluation_group must be 'warm' or 'cold'")
+            existing = evaluation_groups.setdefault(request_id, group)
+            if existing != group:
+                raise EvaluationArtifactError("evaluation_group must be constant within a request")
     return VerifiedEvaluationInput(
         identity=SourceIdentity(
             task=task, data_version=data_version, split=split,
@@ -269,4 +280,5 @@ def load_verified_predictions(
         provenance=provenance,
         predictions=tuple(predictions[key] for key in sorted(predictions)),
         labels_by_candidate=labels_by_candidate,
+        evaluation_groups_by_request=evaluation_groups,
     )

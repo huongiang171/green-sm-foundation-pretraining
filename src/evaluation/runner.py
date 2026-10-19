@@ -40,11 +40,39 @@ def evaluate_prediction_directory(
 
     verified = load_verified_predictions(task, split, prediction_dir, opportunities_root)
     rows = _scored_labels(verified)
-    result = evaluate_food_requests(rows) if task == "food_recommendation" else evaluate_ads(rows)
+    evaluate = evaluate_food_requests if task == "food_recommendation" else evaluate_ads
+    result = evaluate(rows)
     source_request_count = len({row.request_id for row in rows})
     eligibility = dict(result.eligibility)
     eligibility.setdefault("source_request_count", source_request_count)
     eligibility["complete_candidate_request_count"] = source_request_count
+    groups: dict[str, object] = {
+        "all": {
+            "request_count": source_request_count,
+            "metrics": dict(result.metrics),
+            "eligibility": eligibility,
+            "undefined_metrics": dict(result.undefined_metrics),
+        }
+    }
+    for group in ("warm", "cold"):
+        request_ids = {
+            request_id
+            for request_id, value in verified.evaluation_groups_by_request.items()
+            if value == group
+        }
+        if not request_ids:
+            continue
+        group_rows = [row for row in rows if row.request_id in request_ids]
+        group_result = evaluate(group_rows)
+        group_eligibility = dict(group_result.eligibility)
+        group_eligibility.setdefault("source_request_count", len(request_ids))
+        group_eligibility["complete_candidate_request_count"] = len(request_ids)
+        groups[group] = {
+            "request_count": len(request_ids),
+            "metrics": dict(group_result.metrics),
+            "eligibility": group_eligibility,
+            "undefined_metrics": dict(group_result.undefined_metrics),
+        }
     payload = {
         "schema_version": "green_sm_evaluation_report_v1",
         **METRIC_POLICY.identity(),
@@ -62,6 +90,7 @@ def evaluate_prediction_directory(
         "metrics": dict(result.metrics),
         "eligibility": eligibility,
         "undefined_metrics": dict(result.undefined_metrics),
+        "metric_groups": groups,
     }
     return EvaluationReport(payload=payload)
 

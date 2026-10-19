@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Mapping
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Literal
 
 EvaluationSplit = Literal["validation", "test"]
@@ -42,6 +42,7 @@ class VerifiedEvaluationInput:
     provenance: ModelProvenance
     predictions: tuple[CanonicalPrediction, ...]
     labels_by_candidate: Mapping[tuple[str, str], int]
+    evaluation_groups_by_request: Mapping[str, str] = field(default_factory=dict)
 
 
 @dataclass(frozen=True)

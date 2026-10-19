@@ -1,0 +1,31 @@
+seed: 42
+task: food_recommendation
+freeze_foundation: true
+data:
+  data_version: green_sm_shared_signal_poc_v1
+  opportunities_root: replace-at-runtime/green_sm_shared_signal_poc_linked_v1/food_opportunities
+  manifest_path: replace-at-runtime/green_sm_shared_signal_poc_linked_v1/food_opportunities/manifest.json
+  foundation_root: replace-at-runtime/green_sm_shared_signal_poc_linked_v1/foundation
+  foundation_manifest_path: replace-at-runtime/green_sm_shared_signal_poc_linked_v1/foundation/manifest.json
+  foundation_corpus: linked
+  vocabulary_path: replace-at-runtime/foundation-checkpoint/vocabulary.json
+  expected_food_manifest_sha256: replace-at-runtime
+  expected_foundation_manifest_sha256: replace-at-runtime
+  max_tokens: 256
+checkpoint:
+  package_root: replace-at-runtime/foundation-checkpoint
+  expected_selected_checkpoint_sha256: replace-at-runtime
+ranker:
+  run_dir: replace-at-runtime/food-run
+  expected_run_manifest_sha256: replace-at-runtime
+model:
+  dropout: 0.10
+  item_hash_buckets: 8192
+  merchant_hash_buckets: 2048
+training:
+  device: cuda
+  batch_size: 32
+  epochs: 12
+  learning_rate: 0.0003
+  weight_decay: 0.0001
+  artifact_dir: replace-at-runtime/food-artifacts

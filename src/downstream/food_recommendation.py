@@ -131,6 +131,9 @@ def validate_food_data_handoff(config: Mapping[str, Any]) -> dict[str, Any]:
     foundation_manifest = _read_json(foundation_manifest_path, label="Foundation manifest")
     if food_manifest.get("schema_version") != "green_sm_food_opportunities_v1":
         raise FoodConfigurationError("Food manifest has unsupported schema_version")
+    data_version = _config_text(data, "data_version", label="config.data")
+    if food_manifest.get("data_version") != data_version:
+        raise FoodConfigurationError("Food manifest data_version does not match config.data.data_version")
     if food_manifest.get("foundation_manifest_sha256") != foundation_sha:
         raise FoodConfigurationError("Food manifest is not linked to the configured Foundation manifest")
     if foundation_manifest.get("status") not in {None, "complete"}:
@@ -148,7 +151,7 @@ def validate_food_data_handoff(config: Mapping[str, Any]) -> dict[str, Any]:
     return {
         "food_manifest_sha256": food_sha,
         "foundation_manifest_sha256": foundation_sha,
-        "data_version": str(data.get("data_version", "unknown")),
+        "data_version": data_version,
         "splits": sorted(_SPLITS),
     }
 
@@ -1016,6 +1019,24 @@ def _seed_food_training(seed: int) -> None:
 
 def _load_verified_foundation(config: Mapping[str, Any], *, device: str | torch.device) -> tuple[Any, dict[str, Any]]:
     checkpoint = _mapping(config.get("checkpoint"), label="config.checkpoint")
+    package_root = checkpoint.get("package_root")
+    if isinstance(package_root, str) and package_root.strip():
+        root = Path(package_root)
+        manifest_path = root / "checkpoint_manifest.json"
+        manifest = _read_json(manifest_path, label="Foundation checkpoint selection manifest")
+        checkpoint_name = manifest.get("checkpoint")
+        selected_sha = manifest.get("checkpoint_sha256")
+        expected_sha = _config_text(
+            checkpoint, "expected_selected_checkpoint_sha256", label="config.checkpoint"
+        )
+        if not isinstance(checkpoint_name, str) or Path(checkpoint_name).name != checkpoint_name:
+            raise FoodConfigurationError("Foundation selection manifest has invalid checkpoint filename")
+        if selected_sha != expected_sha:
+            raise FoodConfigurationError("Foundation selected checkpoint SHA does not match config")
+        checkpoint_path = root / checkpoint_name
+        _verify_sha256(checkpoint_path, expected_sha, label="Foundation selected checkpoint")
+        embedder = load_foundation_checkpoint(checkpoint_path, manifest_path, map_location=device)
+        return embedder, manifest
     checkpoint_path = Path(_config_text(checkpoint, "path", label="config.checkpoint"))
     manifest_path = Path(_config_text(checkpoint, "manifest_path", label="config.checkpoint"))
     expected_sha = _config_text(checkpoint, "expected_sha256", label="config.checkpoint")

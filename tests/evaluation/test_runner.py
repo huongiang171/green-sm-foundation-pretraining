@@ -32,6 +32,8 @@ def test_food_report_contains_policy_metrics_and_eligibility(
         "ranking_eligible_request_count": 1,
         "excluded_request_counts": {},
     }
+    assert report.payload["metric_groups"]["all"]["request_count"] == 1
+    assert report.payload["metric_groups"]["warm"]["request_count"] == 1
 
 
 def test_ads_report_records_all_rows_and_null_metrics_after_json_roundtrip(tmp_path: Path) -> None:
