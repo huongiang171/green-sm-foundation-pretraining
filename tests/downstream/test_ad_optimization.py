@@ -32,6 +32,12 @@ def _sha256(path: Path) -> str:
     return hashlib.sha256(path.read_bytes()).hexdigest()
 
 
+def test_ads_module_has_no_dead_import_of_removed_green_sm_bridge() -> None:
+    source = Path(ad_optimization.__file__).read_text(encoding="utf-8")
+
+    assert "src.downstream.green_sm_ad_optimization" not in source
+
+
 def _write_handoff_config(tmp_path: Path) -> Path:
     """Create a minimal checksum-bound Data handoff, encoded as YAML-compatible JSON."""
 

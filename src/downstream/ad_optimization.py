@@ -1374,23 +1374,10 @@ def _load_ads_foundation(config: Mapping[str, Any], *, device: str) -> tuple[Any
 
 
 def _load_ads_rows_and_batches(config: Mapping[str, Any], *, split: str, features: Mapping[str, Mapping[str, int]] | None = None) -> tuple[tuple[AdOpportunity, ...], tuple[AdBatch, ...], dict[str, dict[str, int]]]:
-    from src.downstream.green_sm_ad_optimization import (
-        load_green_sm_ads_opportunities,
-        resolve_green_sm_ads_samples,
+    del config, split, features
+    raise AdConfigurationError(
+        "The retired Taobao Ads batch path is unavailable; use the native Green SM runner."
     )
-
-    data = _require_mapping(config, "data")
-    model, training, _ = _ads_settings(config)
-    rows = load_green_sm_ads_opportunities(_require_text(data, "opportunities_root", prefix="config.data"), split=split)
-    vocabulary_path = resolve_selected_foundation_handoff(_require_text(_require_mapping(config, "checkpoint"), "package_root", prefix="config.checkpoint")).vocabulary_path
-    samples = resolve_green_sm_ads_samples(rows, foundation_root=_require_text(data, "foundation_root", prefix="config.data"), vocabulary_path=vocabulary_path, split=split, max_tokens=int(data.get("max_tokens", 256)))
-    fitted = dict(features or {})
-    if not fitted:
-        if split != "train":
-            raise AdConfigurationError("Ads feature artifacts must be supplied for evaluation")
-        fitted = {"category": fit_train_vocabulary(rows, field="cate_id"), "placement": fit_train_vocabulary(rows, field="pid")}
-    batches = build_ad_batches(rows, encoded_samples_by_id=samples, category_vocabulary=fitted["category"], placement_vocabulary=fitted["placement"], candidate_hash_buckets=int(model["candidate_hash_buckets"]), campaign_hash_buckets=int(model["campaign_hash_buckets"]), batch_size=int(training["batch_size"]))
-    return rows, batches, fitted
 
 
 def _ads_logits(embedder: Any, ranker: AdRanker, batch: AdBatch) -> torch.Tensor:
@@ -1457,15 +1444,10 @@ def _legacy_run_ads_prediction(config: Mapping[str, Any], *, split: Literal["val
     features = _read_json(run_dir / "feature_artifacts.json", label="Ads feature artifacts")
     rows, batches, _ = _load_ads_rows_and_batches(config, split=split, features=features)
     payload = torch.load(run_dir / "best.pt", map_location=device, weights_only=False); ranker = AdRanker(**payload["ranker_config"]).to(device); ranker.load_state_dict(payload["ranker_state_dict"]); ranker.eval()
-    from src.downstream.green_sm_ad_optimization import (
-        expected_green_sm_candidates,
-        prediction_rows_from_batch,
+    del handoff, training, embedder, foundation, run_dir, manifest, expected, features, rows, batches, payload, ranker, split
+    raise AdConfigurationError(
+        "The retired Taobao Ads prediction path is unavailable; use run_ads_prediction."
     )
-    predictions = []
-    with torch.no_grad():
-        for batch in batches:
-            moved = _to_device_ad_batch(batch, torch.device(device)); logits = _ads_logits(embedder, ranker, moved); predictions.extend(prediction_rows_from_batch(moved, score_probabilities(logits, moved.candidate_mask).cpu(), split=split))
-    return OutputContractV1.write_predictions(predictions, expected_candidates=expected_green_sm_candidates(rows, data_version=handoff["data_version"], source_checksums={"ads_manifest_sha256": handoff["ads_manifest_sha256"], "foundation_manifest_sha256": handoff["foundation_manifest_sha256"]}), output_dir=run_dir / "predictions" / split, split=split, run_metadata={"selected_checkpoint_sha256": foundation.manifest["checkpoint_sha256"], "vocabulary_sha256": foundation.manifest["vocabulary_sha256"], "foundation_manifest_sha256": handoff["foundation_manifest_sha256"], "ads_manifest_sha256": handoff["ads_manifest_sha256"], "config_digest": "runtime", "seed": config["seed"], "run_id": manifest["run_id"], "score_semantics": "probability"})
 
 
 def load_green_sm_encoded_foundation_samples(
