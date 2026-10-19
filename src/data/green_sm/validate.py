@@ -19,7 +19,7 @@ from src.foundation_input.manifest import DatasetManifest, load_manifest
 
 from .build import root_names
 from .config import GreenSmConfig
-from .world import TargetWorld, build_target_world
+from .world import FOOD_CATEGORIES, TargetWorld, build_target_world
 
 
 def _sha256(path: Path) -> str:
@@ -234,6 +234,63 @@ def _opportunity_metrics(
     }
 
 
+def _shared_signal_poc_report(
+    *,
+    config: GreenSmConfig,
+    world: TargetWorld,
+    raw_events: Iterable[dict[str, Any]],
+    food_rows: Mapping[str, list[dict[str, Any]]],
+    ads_rows: Mapping[str, list[dict[str, Any]]],
+) -> dict[str, object]:
+    """Validate the PoC-only public contracts without reading private affinity as a feature."""
+
+    history_categories: set[str] = set()
+    for row in raw_events:
+        payload = f"{row['context_json']}\n{row['action_json']}"
+        if "food_item_" in payload or '"campaign_id"' in payload:
+            raise ValueError("Foundation history leaks a future candidate identifier")
+        context = json.loads(str(row["context_json"]))
+        if row["scenario"] == "Food" and isinstance(context.get("food_category"), str):
+            history_categories.add(context["food_category"])
+    if history_categories != set(FOOD_CATEGORIES):
+        raise ValueError("shared-signal PoC history does not cover all Food categories")
+
+    def cold_rates(rows: Mapping[str, list[dict[str, Any]]], task: str) -> dict[str, float]:
+        result: dict[str, float] = {}
+        for split in ("validation", "test"):
+            groups = {
+                str(row["request_id"]): str(row.get("evaluation_group", ""))
+                for row in rows[split]
+            }
+            if set(groups.values()) - {"warm", "cold"}:
+                raise ValueError(f"{task} lacks a valid evaluation_group")
+            rate = sum(value == "cold" for value in groups.values()) / len(groups)
+            if rate != config.thresholds.cold_start_test_user_rate:
+                raise ValueError(f"{task} {split} cold request rate differs from config")
+            result[split] = rate
+        return result
+
+    episode_mix = world.episode_mix_counts()
+    total = sum(episode_mix.values())
+    expected = {
+        "cross_service": round(total * 0.70),
+        "same_service": round(total * 0.20),
+        "noise": total - round(total * 0.70) - round(total * 0.20),
+    }
+    if episode_mix != expected:
+        raise ValueError("shared-signal PoC episode mixture differs from 70/20/10")
+    return {
+        "history_food_category_count": len(history_categories),
+        "episode_mix": episode_mix,
+        "episode_directions": world.episode_direction_counts(),
+        "cold_request_rates": {
+            "food": cold_rates(food_rows, "food"),
+            "ads": cold_rates(ads_rows, "ads"),
+        },
+        "leakage_check_passed": True,
+    }
+
+
 def _assert_equal_pair(left: Mapping[str, list[dict[str, Any]]], right: Mapping[str, list[dict[str, Any]]]) -> None:
     if _json(left) != _json(right):
         raise ValueError("paired logical opportunity rows differ")
@@ -293,10 +350,12 @@ def _validate_root(config: GreenSmConfig, world: TargetWorld, root: Path) -> dic
     train_users = {str(row["user_id"]) for row in snapshots if row["split"] == "train"}
     cold = set(world.cold_start_user_ids)
     test_users = {str(row["user_id"]) for row in snapshots if row["split"] == "test"}
-    if cold & train_users or not cold <= test_users:
+    if cold & train_users:
         raise ValueError("cold-start cohort violates temporal isolation")
+    if config.behavior_policy != "shared_signal_poc_v1" and not cold <= test_users:
+        raise ValueError("cold-start cohort lacks test coverage")
     cold_rate = len(cold) / len(world.users)
-    if cold_rate != config.thresholds.cold_start_test_user_rate:
+    if config.behavior_policy != "shared_signal_poc_v1" and cold_rate != config.thresholds.cold_start_test_user_rate:
         raise ValueError("cold-start cohort rate differs from config")
     return {
         "readiness_passed": True,
@@ -329,6 +388,14 @@ def validate_outputs(config: GreenSmConfig) -> dict[str, object]:
         ads_rows[name] = _read_opportunities(root, "ads", foundation_hash)
         report["food"] = _opportunity_metrics(food_rows[name], task="food", config=config)
         report["ads"] = _opportunity_metrics(ads_rows[name], task="ads", config=config)
+        if config.behavior_policy == "shared_signal_poc_v1":
+            report["shared_signal_poc"] = _shared_signal_poc_report(
+                config=config,
+                world=world,
+                raw_events=_event_rows(load_manifest(root / "foundation", verify_checksums=True)),
+                food_rows=food_rows[name],
+                ads_rows=ads_rows[name],
+            )
         report["generator_config_digest"] = config.config_digest
         report["target_world_fingerprint"] = world.fingerprint()
         reports[name] = report

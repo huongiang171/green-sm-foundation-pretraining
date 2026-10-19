@@ -82,3 +82,36 @@ def test_token_threshold_counts_are_train_only() -> None:
     )
 
     assert counts == {}
+
+
+def test_shared_signal_poc_validator_reports_category_mix_cold_rates_and_no_leakage(tmp_path: Path) -> None:
+    base = GreenSmConfig.from_json("configs/green_sm_shared_signal_poc.json")
+    thresholds = replace(
+        base.thresholds,
+        min_train_event_rows_per_event_type=1,
+        max_train_event_type_share=1.0,
+        min_train_valid_next_action_rate=0.0,
+        min_train_maskable_tokens={"categorical": 1, "numeric": 1, "text": 1, "geo": 1},
+        min_valid_geo_rate=0.0,
+        max_non_user_oov_rate_validation_test=1.0,
+    )
+    config = replace(
+        base,
+        output_root=tmp_path / "out",
+        user_count=96,
+        thresholds=thresholds,
+        snapshot_counts={"train": 80, "validation": 40, "test": 40},
+        food_request_counts={"train": 40, "validation": 20, "test": 20},
+        ads_request_counts={"train": 40, "validation": 20, "test": 20},
+    )
+    build_dataset(config)
+
+    report = validate_outputs(config)["roots"]["linked"]["shared_signal_poc"]
+
+    assert report["history_food_category_count"] == 12
+    assert report["episode_mix"] == {"cross_service": 112, "same_service": 32, "noise": 16}
+    assert report["cold_request_rates"]["food"] == {
+        "validation": pytest.approx(0.15),
+        "test": pytest.approx(0.15),
+    }
+    assert report["leakage_check_passed"] is True
