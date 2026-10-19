@@ -7,7 +7,16 @@ from collections.abc import Mapping
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 
-from .world import SIMULATION_START, Catalogue, LogicalRequest, SimulatedUser, TargetWorld, _rng
+from .world import (
+    FOOD_CATEGORIES,
+    SIMULATION_START,
+    Catalogue,
+    LogicalRequest,
+    SimulatedUser,
+    TargetWorld,
+    UserAffinity,
+    _rng,
+)
 
 
 def _digest_text(*parts: object) -> str:
@@ -91,17 +100,28 @@ def _event_fields(
     event_type: str,
     cell_id: str,
     ordinal: int,
+    category: str | None = None,
+    merchant_id: str | None = None,
+    placement: str | None = None,
+    price_band: int | None = None,
 ) -> tuple[dict[str, object], dict[str, object]]:
-    category = ("noodles", "rice", "coffee", "tea", "bakery", "vegetarian")[ordinal % 6]
+    category = category or FOOD_CATEGORIES[ordinal % len(FOOD_CATEGORIES)]
     if scenario == "Ride":
         return (
             {"pickup_location": _geo(catalogue, cell_id), "dropoff_location": _geo(catalogue, cell_id)},
             {"fare": 25_000 + (ordinal % 8) * 5_000, "distance_km": 1.5 + (ordinal % 12) * 0.8},
         )
     if scenario == "Food":
+        item_price = 35_000 + (price_band if price_band is not None else ordinal % 9) * 15_000
+        context: dict[str, object] = {
+            "merchant_location": _geo(catalogue, cell_id),
+            "food_category": category,
+        }
+        if merchant_id is not None:
+            context["merchant_id"] = merchant_id
         return (
-            {"merchant_location": _geo(catalogue, cell_id), "food_category": category},
-            {"query": f"{category} nearby", "item_price": 35_000 + (ordinal % 9) * 15_000},
+            context,
+            {"query": f"{category} nearby", "item_price": item_price},
         )
     if scenario == "Delivery":
         return (
@@ -109,8 +129,12 @@ def _event_fields(
             {"delivery_fee": 12_000 + (ordinal % 6) * 2_000, "distance_km": 1.0 + (ordinal % 10) * 0.6},
         )
     return (
-        {"ad_context_location": _geo(catalogue, cell_id), "placement": ("home", "search", "checkout")[ordinal % 3]},
-        {"campaign_id": f"campaign_{ordinal % 120:03d}", "bid": 2_000 + (ordinal % 7) * 500},
+        {
+            "ad_context_location": _geo(catalogue, cell_id),
+            "placement": placement or ("home", "search", "checkout")[ordinal % 3],
+            "ad_category": category,
+        },
+        {"campaign_topic": category, "bid": 2_000 + (ordinal % 7) * 500},
     )
 
 
@@ -147,12 +171,43 @@ def _generic_groups(world: TargetWorld, user: SimulatedUser, *, view: str) -> li
             if view == "control" and scenario in {"Ride", "Delivery"}:
                 record_id = f"control:{_digest_text(user.user_id, day, slot, scenario)}"
                 ordinal += 37
+            affinity = world.user_affinities.get(user.user_id)
+            category: str | None = None
+            merchant_id: str | None = None
+            placement: str | None = None
+            price_band: int | None = None
+            if affinity is not None and scenario in {"Food", "Ads"}:
+                semantic_rng = _rng(user_number, "shared-generic", day, slot, scenario)
+                category = (
+                    affinity.primary_food_category
+                    if semantic_rng.random() < 0.72
+                    else affinity.secondary_food_category
+                    if semantic_rng.random() < 0.85
+                    else FOOD_CATEGORIES[semantic_rng.randrange(len(FOOD_CATEGORIES))]
+                )
+                placement = affinity.preferred_placement if semantic_rng.random() < 0.72 else ("home", "search", "checkout")[semantic_rng.randrange(3)]
+                price_band = affinity.preferred_price_band
+                merchant = next(
+                    (
+                        entry
+                        for entry in world.catalogue.food_merchants
+                        if entry.category == category
+                        and int(entry.entity_id.rsplit("_", 1)[-1]) % 8 == affinity.merchant_family
+                    ),
+                    next(entry for entry in world.catalogue.food_merchants if entry.category == category),
+                )
+                merchant_id = merchant.entity_id
+                cell_id = affinity.preferred_geo_cell if semantic_rng.random() < 0.70 else linked_cell
             context, action = _event_fields(
                 catalogue=world.catalogue,
                 scenario=scenario,
                 event_type=event_type,
                 cell_id=cell_id,
                 ordinal=ordinal,
+                category=category,
+                merchant_id=merchant_id,
+                placement=placement,
+                price_band=price_band,
             )
             groups.append(
                 EventGroup(
@@ -171,6 +226,80 @@ def _generic_groups(world: TargetWorld, user: SimulatedUser, *, view: str) -> li
 
 
 def _episode_group(world: TargetWorld, request: LogicalRequest, *, view: str) -> EventGroup:
+    episode = world.episodes.get(request.request_id)
+    if episode is not None:
+        affinity = world.affinity_for(request.user_id)
+        if episode.kind == "cross_service":
+            scenario, event_type, before = (
+                ("Ads", "ad_click", timedelta(minutes=15))
+                if episode.direction == "ads_to_food"
+                else ("Food", "food_order", timedelta(minutes=20))
+            )
+        elif episode.kind == "same_service":
+            scenario, event_type, before = (
+                ("Food", "merchant_view", timedelta(minutes=15))
+                if request.service == "Food"
+                else ("Ads", "ad_impression", timedelta(minutes=15))
+            )
+        else:
+            scenario, event_type, before = (
+                ("Ads", "ad_impression", timedelta(minutes=15))
+                if request.service == "Food"
+                else ("Food", "food_search", timedelta(minutes=15))
+            )
+        ordinal = int(_digest_text(request.request_id), 16) % 100_000
+        category = affinity.primary_food_category
+        merchant_id: str | None = None
+        placement = affinity.preferred_placement
+        price_band = affinity.preferred_price_band
+        cell_id = affinity.preferred_geo_cell
+        if episode.kind == "noise" or view == "control":
+            noise_rng = _rng("control-episode", request.request_id, scenario)
+            category = FOOD_CATEGORIES[(FOOD_CATEGORIES.index(affinity.primary_food_category) + 1 + noise_rng.randrange(11)) % 12]
+            cell_id = request.request_cell
+            placement = ("home", "search", "checkout")[
+                (("home", "search", "checkout").index(affinity.preferred_placement) + 1) % 3
+            ]
+            price_band = (affinity.preferred_price_band + 1 + noise_rng.randrange(8)) % 9
+        if scenario == "Food":
+            desired_family = affinity.merchant_family if view == "linked" and episode.kind != "noise" else (affinity.merchant_family + 1) % 8
+            merchant_id = next(
+                (
+                    entry.entity_id
+                    for entry in world.catalogue.food_merchants
+                    if entry.category == category
+                    and int(entry.entity_id.rsplit("_", 1)[-1]) % 8 == desired_family
+                ),
+                next(entry.entity_id for entry in world.catalogue.food_merchants if entry.category == category),
+            )
+        source_record_id = (
+            episode.source_record_id
+            if view == "linked"
+            else f"control:{_digest_text(request.user_id, request.cutoff_time.isoformat(), scenario)}"
+        )
+        context, action = _event_fields(
+            catalogue=world.catalogue,
+            scenario=scenario,
+            event_type=event_type,
+            cell_id=cell_id,
+            ordinal=ordinal,
+            category=category,
+            merchant_id=merchant_id,
+            placement=placement,
+            price_band=price_band,
+        )
+        return EventGroup(
+            source_record_id=source_record_id,
+            source_record_index=0,
+            user_id=request.user_id,
+            event_time=request.cutoff_time - before,
+            split=request.split,
+            scenario=scenario,
+            event_type=event_type,
+            context=context,
+            action=action,
+            linked_episode=view == "linked",
+        )
     if request.service == "Food":
         scenario, event_type, before = "Ride", "ride_complete", timedelta(minutes=25)
     else:

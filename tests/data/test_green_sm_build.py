@@ -90,3 +90,25 @@ def test_preprocessing_contract_publishes_geo_catalogue_and_green_sm_allowlists(
     assert contract["coordinate_tolerance"] == pytest.approx(1e-6)
     assert len(contract["geo_catalogue"]) == 64
     assert set(contract["geo_catalogue"]["cell_00"]) == {"lat", "lon"}
+
+
+def test_shared_signal_poc_builds_one_snapshot_per_request_and_exact_cold_request_rates(
+    tmp_path: Path,
+) -> None:
+    base = GreenSmConfig.from_json("configs/green_sm_shared_signal_poc.json")
+    config = replace(
+        base,
+        output_root=tmp_path / "out",
+        user_count=96,
+        snapshot_counts={"train": 80, "validation": 40, "test": 40},
+        food_request_counts={"train": 40, "validation": 20, "test": 20},
+        ads_request_counts={"train": 40, "validation": 20, "test": 20},
+    )
+
+    result = build_dataset(config)
+
+    assert result["snapshot_counts"] == {"train": 80, "validation": 40, "test": 40}
+    assert result["cold_request_rates"] == {
+        "food": {"validation": pytest.approx(0.15), "test": pytest.approx(0.15)},
+        "ads": {"validation": pytest.approx(0.15), "test": pytest.approx(0.15)},
+    }

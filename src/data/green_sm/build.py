@@ -26,7 +26,9 @@ from .world import (
 )
 
 SCHEMA_VERSION = "omnibehavior_pretraining_v2"
-_DATA_VERSION = re.compile(r"^green_sm_sim_(?:pilot|full)_v(?P<version>[1-9][0-9]*)$")
+_DATA_VERSION = re.compile(
+    r"^(?:green_sm_sim_(?:pilot|full)|green_sm_shared_signal_poc)_v(?P<version>[1-9][0-9]*)$"
+)
 
 
 def root_names(data_version: str) -> dict[str, str]:
@@ -34,10 +36,13 @@ def root_names(data_version: str) -> dict[str, str]:
 
     matched = _DATA_VERSION.fullmatch(data_version)
     if matched is None:
-        raise ValueError(
-            "data_version must be green_sm_sim_pilot_vN or green_sm_sim_full_vN"
-        )
+        raise ValueError("unsupported Green SM data_version")
     version = matched.group("version")
+    if data_version.startswith("green_sm_shared_signal_poc_"):
+        return {
+            "linked": f"green_sm_shared_signal_poc_linked_v{version}",
+            "paired_control": f"green_sm_shared_signal_poc_control_paired_v{version}",
+        }
     return {
         "linked": f"green_sm_sim_linked_v{version}",
         "paired_control": f"green_sm_sim_control_paired_v{version}",
@@ -139,7 +144,7 @@ def _extra_specs(
         existing_users = {user_id for _, user_id, _ in specs[split]}
         required_cold = (
             [user for user in world.users if user.user_id in world.cold_start_user_ids and user.user_id not in existing_users]
-            if split == "test"
+            if split == "test" and config.behavior_policy != "shared_signal_poc_v1"
             else []
         )
         if len(required_cold) > remaining:
@@ -230,6 +235,15 @@ def _foundation_config(config: GreenSmConfig, world: TargetWorld, view_name: str
         "context.delivery_location",
         "context.ad_context_location",
     ]
+    context_allowlist = {
+        "Ride": ["pickup_location", "dropoff_location"],
+        "Food": ["merchant_location", "food_category"],
+        "Delivery": ["delivery_location", "delivery_category"],
+        "Ads": ["ad_context_location", "placement"],
+    }
+    if config.behavior_policy == "shared_signal_poc_v1":
+        context_allowlist["Food"].append("merchant_id")
+        context_allowlist["Ads"].append("ad_category")
     tokenizer_contract = {
         "profile_allowlist": [
             "home_location",
@@ -238,12 +252,7 @@ def _foundation_config(config: GreenSmConfig, world: TargetWorld, view_name: str
             "preferred_service",
             "active_days_so_far",
         ],
-        "context_allowlist": {
-            "Ride": ["pickup_location", "dropoff_location"],
-            "Food": ["merchant_location", "food_category"],
-            "Delivery": ["delivery_location", "delivery_category"],
-            "Ads": ["ad_context_location", "placement"],
-        },
+        "context_allowlist": context_allowlist,
         "geo_field_registry": geo_fields,
         "geo_catalogue": geo_catalogue,
         "geo_catalogue_fingerprint": geo_catalogue_fingerprint,
@@ -328,10 +337,15 @@ def _write_foundation(
 
 
 def _opportunity_rows(
-    requests: Iterable[LogicalRequest], sample_for_request: Mapping[str, str], *, task: str
+    requests: Iterable[LogicalRequest],
+    sample_for_request: Mapping[str, str],
+    *,
+    task: str,
+    cold_user_ids: frozenset[str],
 ) -> dict[str, list[dict[str, object]]]:
     rows = {split: [] for split in ("train", "validation", "test")}
     for request in requests:
+        evaluation_group = "cold" if request.user_id in cold_user_ids else "warm"
         for candidate in request.candidates:
             row: dict[str, object] = {
                 "request_id": request.request_id,
@@ -345,6 +359,7 @@ def _opportunity_rows(
                 "candidate_geo_cell": candidate.geo_cell,
                 "candidate_lat": candidate.lat,
                 "candidate_lon": candidate.lon,
+                "evaluation_group": evaluation_group,
             }
             if task == "food":
                 row.update(
@@ -412,8 +427,18 @@ def build_dataset(config: GreenSmConfig) -> dict[str, object]:
     if observed != expected:
         raise ValueError(f"snapshot construction count mismatch: expected {expected}, got {observed}")
 
-    food_rows = _opportunity_rows(world.food_requests, sample_for_request, task="food")
-    ads_rows = _opportunity_rows(world.ads_requests, sample_for_request, task="ads")
+    food_rows = _opportunity_rows(
+        world.food_requests,
+        sample_for_request,
+        task="food",
+        cold_user_ids=world.cold_start_user_ids,
+    )
+    ads_rows = _opportunity_rows(
+        world.ads_requests,
+        sample_for_request,
+        task="ads",
+        cold_user_ids=world.cold_start_user_ids,
+    )
     roots: dict[str, str] = {}
     max_tokens = 0
     names = root_names(config.data_version)
@@ -434,4 +459,16 @@ def build_dataset(config: GreenSmConfig) -> dict[str, object]:
         "max_estimated_token_count": max_tokens,
         "target_world_fingerprint": world.fingerprint(),
         "config_digest": config.config_digest,
+        "snapshot_counts": observed,
+        "cold_request_rates": {
+            task: {
+                split: sum(
+                    request.split == split and request.user_id in world.cold_start_user_ids
+                    for request in requests
+                )
+                / sum(request.split == split for request in requests)
+                for split in ("validation", "test")
+            }
+            for task, requests in (("food", world.food_requests), ("ads", world.ads_requests))
+        },
     }

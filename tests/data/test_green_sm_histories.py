@@ -37,3 +37,35 @@ def test_history_views_are_chronological_complete_and_causal_for_cold_users(tmp_
             prior = view.events_before(request.user_id, request.cutoff_time)
             assert all(group.event_time < request.cutoff_time for group in prior)
             assert all(request.request_id not in group.source_record_id for group in prior)
+
+
+def test_shared_signal_poc_emits_causal_cross_service_events_and_control_removes_them(tmp_path: Path) -> None:
+    base = GreenSmConfig.from_json("configs/green_sm_shared_signal_poc.json")
+    config = replace(
+        base,
+        output_root=tmp_path / "out",
+        user_count=96,
+        snapshot_counts={"train": 40, "validation": 20, "test": 20},
+        food_request_counts={"train": 20, "validation": 10, "test": 10},
+        ads_request_counts={"train": 20, "validation": 10, "test": 10},
+    )
+    world = build_target_world(config)
+    linked, control = build_history_views(world)
+    request = next(
+        request
+        for request in world.food_requests
+        if world.episode_for(request.request_id).kind == "cross_service"
+    )
+    episode = world.episode_for(request.request_id)
+
+    linked_prior = linked.events_before(request.user_id, request.cutoff_time)
+    control_prior = control.events_before(request.user_id, request.cutoff_time)
+    assert episode.direction == "ads_to_food"
+    assert any(
+        group.source_record_id == episode.source_record_id
+        and group.scenario == "Ads"
+        and group.event_time < request.cutoff_time
+        for group in linked_prior
+    )
+    assert not any(group.source_record_id == episode.source_record_id for group in control_prior)
+    assert all("food_item_" not in repr(group.public_payload()) for group in linked_prior)

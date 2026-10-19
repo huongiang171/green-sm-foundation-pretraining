@@ -361,7 +361,9 @@ def _build_users(config: GreenSmConfig) -> tuple[tuple[SimulatedUser, ...], froz
                 user_id=f"u{index:06d}",
                 home_cell=f"cell_{rng.randrange(64):02d}",
                 work_cell=f"cell_{rng.randrange(64):02d}",
-                first_active_day=29 + rng.randrange(14) if is_cold else 1 + rng.randrange(8),
+                first_active_day=(29 if config.behavior_policy == "shared_signal_poc_v1" else 29 + rng.randrange(14))
+                if is_cold
+                else 1 + rng.randrange(8),
                 budget_bucket=("low", "medium", "high")[rng.randrange(3)],
                 preferred_service=("Ride", "Food", "Delivery", "Ads")[rng.randrange(4)],
             )
@@ -377,10 +379,11 @@ def _build_affinities(config: GreenSmConfig, users: Iterable[SimulatedUser]) -> 
         secondary_index = (primary_index + 1 + rng.randrange(len(FOOD_CATEGORIES) - 1)) % len(
             FOOD_CATEGORIES
         )
+        primary_families = [index % 8 for index in range(160) if index % len(FOOD_CATEGORIES) == primary_index]
         affinities[user.user_id] = UserAffinity(
             primary_food_category=FOOD_CATEGORIES[primary_index],
             secondary_food_category=FOOD_CATEGORIES[secondary_index],
-            merchant_family=rng.randrange(8),
+            merchant_family=primary_families[rng.randrange(len(primary_families))],
             preferred_price_band=rng.randrange(9),
             preferred_geo_cell=user.home_cell if rng.random() < 0.5 else user.work_cell,
             preferred_placement=("home", "search", "checkout")[rng.randrange(3)],
@@ -443,6 +446,7 @@ def _eligible_users(users: Iterable[SimulatedUser], day: int) -> tuple[Simulated
 
 def _request_user(
     *,
+    config: GreenSmConfig,
     users: tuple[SimulatedUser, ...],
     cold_user_ids: frozenset[str],
     split: str,
@@ -450,8 +454,23 @@ def _request_user(
     day: int,
     seed: int,
     service: str,
+    request_count: int,
 ) -> SimulatedUser:
     cold = tuple(user for user in users if user.user_id in cold_user_ids and user.first_active_day <= day)
+    if config.behavior_policy == "shared_signal_poc_v1" and split != "train":
+        cold_request_count = round(request_count * config.thresholds.cold_start_test_user_rate)
+        cold_ordinals = sorted(
+            range(request_count),
+            key=lambda value: _rng(config.seed, "cold-request", service, split, value).random(),
+        )[:cold_request_count]
+        if ordinal in cold_ordinals:
+            return cold[_rng(config.seed, "cold-request-user", service, split, ordinal).randrange(len(cold))]
+        eligible = tuple(
+            user
+            for user in _eligible_users(users, day)
+            if user.user_id not in cold_user_ids
+        )
+        return eligible[_rng(config.seed, "request-user", service, split, ordinal).randrange(len(eligible))]
     if split != "train" and ordinal < len(cold_user_ids) and cold:
         return cold[ordinal % len(cold)]
     eligible = _eligible_users(users, day)
@@ -484,7 +503,7 @@ def _food_request(
     count: int,
 ) -> LogicalRequest:
     day, cutoff = _request_time(split, ordinal, count, service="Food")
-    user = _request_user(users=users, cold_user_ids=cold_ids, split=split, ordinal=ordinal, day=day, seed=config.seed, service="Food")
+    user = _request_user(config=config, users=users, cold_user_ids=cold_ids, split=split, ordinal=ordinal, day=day, seed=config.seed, service="Food", request_count=count)
     rng = _rng(config.seed, "food-request", split, ordinal)
     if config.behavior_policy == "shared_signal_poc_v1":
         affinity = _build_affinities(config, (user,))[user.user_id]
@@ -576,7 +595,7 @@ def _ads_request(
     count: int,
 ) -> LogicalRequest:
     day, cutoff = _request_time(split, ordinal, count, service="Ads")
-    user = _request_user(users=users, cold_user_ids=cold_ids, split=split, ordinal=ordinal, day=day, seed=config.seed, service="Ads")
+    user = _request_user(config=config, users=users, cold_user_ids=cold_ids, split=split, ordinal=ordinal, day=day, seed=config.seed, service="Ads", request_count=count)
     rng = _rng(config.seed, "ads-request", split, ordinal)
     if config.behavior_policy == "shared_signal_poc_v1":
         affinity = _build_affinities(config, (user,))[user.user_id]
