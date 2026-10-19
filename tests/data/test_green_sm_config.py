@@ -88,3 +88,13 @@ def test_config_digest_changes_when_a_readiness_threshold_changes(tmp_path: Path
     second_path.write_text(json.dumps(payload), encoding="utf-8")
 
     assert GreenSmConfig.from_json(first_path).config_digest != GreenSmConfig.from_json(second_path).config_digest
+
+
+def test_shared_signal_poc_config_declares_immutable_policy_and_scale() -> None:
+    config = GreenSmConfig.from_json("configs/green_sm_shared_signal_poc.json")
+
+    assert config.data_version == "green_sm_shared_signal_poc_v1"
+    assert config.behavior_policy == "shared_signal_poc_v1"
+    assert dict(config.snapshot_counts) == {"train": 12000, "validation": 2000, "test": 2000}
+    assert dict(config.food_request_counts) == {"train": 6000, "validation": 1000, "test": 1000}
+    assert dict(config.ads_request_counts) == {"train": 6000, "validation": 1000, "test": 1000}

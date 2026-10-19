@@ -158,6 +158,7 @@ class GreenSmConfig:
     ads_request_counts: Mapping[str, int]
     max_history_events: int
     max_tokens: int
+    behavior_policy: str
     thresholds: ReadinessThresholds
 
     @classmethod
@@ -185,6 +186,9 @@ class GreenSmConfig:
         if missing:
             raise ValueError(f"Green SM config missing required fields: {missing}")
         mode = str(payload["mode"])
+        behavior_policy = str(payload.get("behavior_policy", "legacy_v1"))
+        if behavior_policy not in {"legacy_v1", "shared_signal_poc_v1"}:
+            raise ValueError("behavior_policy must be 'legacy_v1' or 'shared_signal_poc_v1'")
         pilot_fraction = float(payload["pilot_fraction"])
         if mode not in {"pilot", "full"}:
             raise ValueError("mode must be 'pilot' or 'full'")
@@ -224,6 +228,7 @@ class GreenSmConfig:
             ),
             max_history_events=max_history_events,
             max_tokens=max_tokens,
+            behavior_policy=behavior_policy,
             thresholds=thresholds.for_fraction(pilot_fraction),
         )
 
@@ -244,6 +249,7 @@ class GreenSmConfig:
             "ads_request_counts": dict(self.ads_request_counts),
             "max_history_events": self.max_history_events,
             "max_tokens": self.max_tokens,
+            "behavior_policy": self.behavior_policy,
             "thresholds": {
                 "min_train_event_rows_per_event_type": self.thresholds.min_train_event_rows_per_event_type,
                 "max_train_event_type_share": self.thresholds.max_train_event_type_share,
