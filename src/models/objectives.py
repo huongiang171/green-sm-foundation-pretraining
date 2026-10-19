@@ -34,6 +34,7 @@ class LossBreakdown:
     geo_coordinate: torch.Tensor
     geo_missing: torch.Tensor
     next_action: torch.Tensor
+    next_semantic: torch.Tensor
     counts: Mapping[str, int]
 
 
@@ -66,6 +67,7 @@ class PretrainingHeads(nn.Module):
         self.geo_value = nn.Linear(d_model, 2)
         self.geo_missing = nn.Linear(d_model, 1)
         self.next_action = nn.Linear(d_model, value_vocab_size)
+        self.next_semantic = nn.Linear(d_model, value_vocab_size)
 
     def forward_masked(self, hidden_states: torch.Tensor) -> MaskedPredictions:
         if hidden_states.ndim != 3:
@@ -82,6 +84,11 @@ class PretrainingHeads(nn.Module):
         if z_user.ndim != 2:
             raise ValueError("z_user must have shape [B, D]")
         return self.next_action(z_user)
+
+    def forward_next_semantic(self, z_user: torch.Tensor) -> torch.Tensor:
+        if z_user.ndim != 2:
+            raise ValueError("z_user must have shape [B, D]")
+        return self.next_semantic(z_user)
 
 
 def _zero(reference: torch.Tensor) -> torch.Tensor:
@@ -164,6 +171,17 @@ def compute_pretraining_loss(
     z_user = fusion(next_action_output.long_term, next_action_output.short_term)
     next_action_logits = heads.forward_next_action(z_user)
     next_action_loss, next_action_count = _cross_entropy(next_action_logits, labels, valid_next)
+    semantic_mask = original_batch.targets.get("next_semantic_valid_mask")
+    semantic_labels = original_batch.targets.get("next_semantic_value_ids")
+    if semantic_mask is None or semantic_labels is None:
+        semantic_mask = torch.zeros_like(valid_next)
+        semantic_labels = torch.zeros_like(labels)
+    if semantic_mask.dtype != torch.bool or semantic_mask.shape != semantic_labels.shape:
+        raise ValueError("next-semantic targets must be batch-aligned with a bool valid mask")
+    semantic_logits = heads.forward_next_semantic(z_user)
+    next_semantic_loss, next_semantic_count = _cross_entropy(
+        semantic_logits, semantic_labels, semantic_mask
+    )
 
     total = (
         weights.categorical * categorical_loss
@@ -172,6 +190,7 @@ def compute_pretraining_loss(
         + weights.geo_coordinate * geo_coordinate_loss
         + weights.geo_missing * geo_missing_loss
         + weights.next_action * next_action_loss
+        + weights.next_semantic * next_semantic_loss
     )
     return LossBreakdown(
         total=total,
@@ -181,6 +200,7 @@ def compute_pretraining_loss(
         geo_coordinate=geo_coordinate_loss,
         geo_missing=geo_missing_loss,
         next_action=next_action_loss,
+        next_semantic=next_semantic_loss,
         counts={
             "categorical": categorical_count,
             "numeric_value": numeric_value_count,
@@ -188,5 +208,6 @@ def compute_pretraining_loss(
             "geo_coordinate": geo_coordinate_count,
             "geo_missing": geo_missing_count,
             "next_action": next_action_count,
+            "next_semantic": next_semantic_count,
         },
     )

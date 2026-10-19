@@ -129,6 +129,7 @@ class ObjectiveWeights:
     geo_coordinate: float
     geo_missing: float
     next_action: float
+    next_semantic: float = 0.0
 
     def __post_init__(self) -> None:
         for name in (
@@ -138,6 +139,7 @@ class ObjectiveWeights:
             "geo_coordinate",
             "geo_missing",
             "next_action",
+            "next_semantic",
         ):
             _nonnegative_float(getattr(self, name), name=f"objectives.{name}_weight")
 
@@ -238,18 +240,22 @@ def _training(value: object) -> TrainingSettings:
 
 
 def _objectives(value: object) -> ObjectiveWeights:
-    fields = _mapping(
-        value,
-        name="objectives",
-        keys={
-            "categorical_weight",
-            "numeric_value_weight",
-            "numeric_missing_weight",
-            "geo_coordinate_weight",
-            "geo_missing_weight",
-            "next_action_weight",
-        },
-    )
+    if not isinstance(value, Mapping):
+        raise TypeError("objectives must be an object")
+    required = {
+        "categorical_weight",
+        "numeric_value_weight",
+        "numeric_missing_weight",
+        "geo_coordinate_weight",
+        "geo_missing_weight",
+        "next_action_weight",
+    }
+    allowed = required | {"next_semantic_weight"}
+    if set(value) - allowed or required - set(value):
+        missing = sorted(required - set(value))
+        unknown = sorted(set(value) - allowed)
+        raise ValueError(f"objectives keys mismatch: missing={missing}, unknown={unknown}")
+    fields = value
     return ObjectiveWeights(
         categorical=_nonnegative_float(fields["categorical_weight"], name="objectives.categorical_weight"),
         numeric_value=_nonnegative_float(
@@ -266,6 +272,9 @@ def _objectives(value: object) -> ObjectiveWeights:
         ),
         next_action=_nonnegative_float(
             fields["next_action_weight"], name="objectives.next_action_weight"
+        ),
+        next_semantic=_nonnegative_float(
+            fields.get("next_semantic_weight", 0.0), name="objectives.next_semantic_weight"
         ),
     )
 

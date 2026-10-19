@@ -149,6 +149,14 @@ def test_config_rejects_dataset_and_model_length_mismatch(tmp_path: Path) -> Non
         load_pretraining_config(path)
 
 
+def test_config_parses_optional_shared_next_semantic_weight(tmp_path: Path) -> None:
+    from src.pretraining.config import load_pretraining_config
+
+    config = load_pretraining_config(_write_config(tmp_path, objectives={"next_semantic_weight": 0.75}))
+
+    assert config.objectives.next_semantic == pytest.approx(0.75)
+
+
 def test_preflight_rejects_paired_roots_with_different_target_world(tmp_path: Path) -> None:
     """A linked/control comparison must stop when its paired target worlds differ."""
     from src.pretraining.config import load_pretraining_config

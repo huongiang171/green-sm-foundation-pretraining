@@ -198,6 +198,8 @@ def foundation_collate(
     next_action_type_ids: list[int] = []
     next_action_group_ids: list[int] = []
     next_action_valid_mask: list[bool] = []
+    next_semantic_value_ids: list[int] = []
+    next_semantic_valid_mask: list[bool] = []
     for sample in samples:
         next_action = sample.next_action_records
         group_to_id: dict[str, int] = {}
@@ -294,6 +296,23 @@ def foundation_collate(
             else 0
         )
         next_action_valid_mask.append(bool(next_action))
+        semantic_value_id = next(
+            (
+                record.value_id
+                for key in (
+                    "context.food_category",
+                    "context.ad_category",
+                    "context.placement",
+                    "context.merchant_id",
+                    "context.delivery_category",
+                )
+                for record in next_action
+                if record.token.key == key and record.value_id > SPECIAL_TOKEN_IDS["UNK"]
+            ),
+            0,
+        )
+        next_semantic_value_ids.append(semantic_value_id)
+        next_semantic_valid_mask.append(semantic_value_id != 0)
 
     max_length = max(len(row["input_ids"]) for row in rows)
     padded: dict[str, list[list[int | bool]]] = {}
@@ -352,5 +371,7 @@ def foundation_collate(
             "next_action_type_ids": tensor(next_action_type_ids, dtype=backend.long),
             "next_action_group_ids": tensor(next_action_group_ids, dtype=backend.long),
             "next_action_valid_mask": tensor(next_action_valid_mask, dtype=backend.bool),
+            "next_semantic_value_ids": tensor(next_semantic_value_ids, dtype=backend.long),
+            "next_semantic_valid_mask": tensor(next_semantic_valid_mask, dtype=backend.bool),
         },
     )

@@ -325,7 +325,7 @@ def evaluate_split(
     state.model.eval()
     state.fusion.eval()
     state.heads.eval()
-    totals: dict[str, float] = {"total": 0.0}
+    totals: dict[str, float] = {"total": 0.0, "next_action": 0.0, "next_semantic": 0.0}
     seen = 0
     if batch_size <= 0:
         raise ValueError("batch_size must be positive")
@@ -352,6 +352,8 @@ def evaluate_split(
             weights=state.objective_weights,
         )
         totals["total"] += float(loss.total.item())
+        totals["next_action"] += float(loss.next_action.item())
+        totals["next_semantic"] += float(loss.next_semantic.item())
         seen += 1
     if not seen:
         raise ValueError("Cannot evaluate an empty split")
@@ -472,7 +474,15 @@ def run_corpus(
     ):
         loss = train_one_step(state, sample_batch, global_step=step)
         completed_step = step + 1
-        trace.append({"step": completed_step, "total": float(loss.total.item()), "counts": dict(loss.counts)})
+        trace.append(
+            {
+                "step": completed_step,
+                "total": float(loss.total.item()),
+                    "next_action": float(getattr(loss, "next_action", torch.tensor(0.0)).item()),
+                    "next_semantic": float(getattr(loss, "next_semantic", torch.tensor(0.0)).item()),
+                "counts": dict(loss.counts),
+            }
+        )
         _atomic_json(trace_path, trace)
         evaluate_now = (
             completed_step % config.training.eval_every_steps == 0
@@ -487,7 +497,14 @@ def run_corpus(
                 max_batches=config.training.validation_max_batches,
             )
             validation_total = float(validation["total"])
-            evaluations.append({"step": completed_step, "validation_total": validation_total})
+            evaluations.append(
+                {
+                    "step": completed_step,
+                    "validation_total": validation_total,
+                    "validation_next_action": float(validation.get("next_action", 0.0)),
+                    "validation_next_semantic": float(validation.get("next_semantic", 0.0)),
+                }
+            )
             improved = best_validation is None or validation_total < best_validation
             if improved:
                 best_validation = validation_total

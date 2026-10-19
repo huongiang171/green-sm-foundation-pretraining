@@ -1,0 +1,13 @@
+{
+  "schema_version": "green_sm_pretraining_v1",
+  "linked_root": "data/processed/green_sm_shared_signal_poc_v1/green_sm_shared_signal_poc_linked_v1/foundation",
+  "control_root": "data/processed/green_sm_shared_signal_poc_v1/green_sm_shared_signal_poc_control_paired_v1/foundation",
+  "output_dir": "artifacts/green_sm_shared_signal_poc_v1",
+  "run_id": "shared-signal-poc-v1-r1",
+  "seed": 42,
+  "model": {"d_model": 64, "num_heads": 4, "num_layers": 2, "dropout": 0.10, "max_length": 256, "num_user_buckets": 10000, "categorical_pair_buckets": 50021},
+  "dataset": {"max_tokens": 256, "max_event_count": 30},
+  "training": {"batch_size": 32, "max_steps": 1200, "eval_every_steps": 250, "checkpoint_every_steps": 250, "learning_rate": 0.0002, "weight_decay": 0.01, "shuffle_buffer_size": 512, "validation_max_batches": 32},
+  "masking": {"probability": 0.15},
+  "objectives": {"categorical_weight": 1.0, "numeric_value_weight": 1.0, "numeric_missing_weight": 1.0, "geo_coordinate_weight": 1.0, "geo_missing_weight": 1.0, "next_action_weight": 1.0, "next_semantic_weight": 0.75}
+}

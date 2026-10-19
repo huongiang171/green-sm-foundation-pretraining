@@ -124,3 +124,15 @@ def test_zero_valid_next_action_rows_keep_total_loss_finite() -> None:
 
     assert loss.counts["next_action"] == 0
     assert torch.isfinite(loss.total)
+
+
+def test_next_semantic_loss_uses_only_declared_semantic_rows() -> None:
+    model = _model()
+    batch = _batch([True, True])
+    batch.targets["next_semantic_value_ids"] = torch.tensor([12, 0], dtype=torch.long)
+    batch.targets["next_semantic_valid_mask"] = torch.tensor([True, False], dtype=torch.bool)
+
+    loss = _loss(model, batch)
+
+    assert loss.counts["next_semantic"] == 1
+    assert torch.isfinite(loss.next_semantic)
