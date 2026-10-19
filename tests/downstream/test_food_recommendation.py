@@ -650,6 +650,17 @@ def test_food_checkpoint_binding_rejects_another_foundation_corpus() -> None:
         )
 
 
+def test_food_uses_selected_checkpoint_sha_for_package_configuration() -> None:
+    from src.downstream.food_recommendation import configured_foundation_checkpoint_sha
+
+    assert configured_foundation_checkpoint_sha(
+        {
+            "package_root": "/immutable/checkpoint-package",
+            "expected_selected_checkpoint_sha256": "a" * 64,
+        }
+    ) == "a" * 64
+
+
 def test_food_prediction_runner_exports_all_test_candidates_without_labels(
     tmp_path: Path,
 ) -> None:

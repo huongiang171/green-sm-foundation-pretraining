@@ -1017,6 +1017,17 @@ def _seed_food_training(seed: int) -> None:
         torch.cuda.manual_seed_all(seed)
 
 
+def configured_foundation_checkpoint_sha(checkpoint: Mapping[str, Any]) -> str:
+    """Return the configured immutable SHA for either supported checkpoint handoff."""
+
+    package_root = checkpoint.get("package_root")
+    if isinstance(package_root, str) and package_root.strip():
+        return _config_text(
+            checkpoint, "expected_selected_checkpoint_sha256", label="config.checkpoint"
+        )
+    return _config_text(checkpoint, "expected_sha256", label="config.checkpoint")
+
+
 def _load_verified_foundation(config: Mapping[str, Any], *, device: str | torch.device) -> tuple[Any, dict[str, Any]]:
     checkpoint = _mapping(config.get("checkpoint"), label="config.checkpoint")
     package_root = checkpoint.get("package_root")
@@ -1026,9 +1037,7 @@ def _load_verified_foundation(config: Mapping[str, Any], *, device: str | torch.
         manifest = _read_json(manifest_path, label="Foundation checkpoint selection manifest")
         checkpoint_name = manifest.get("checkpoint")
         selected_sha = manifest.get("checkpoint_sha256")
-        expected_sha = _config_text(
-            checkpoint, "expected_selected_checkpoint_sha256", label="config.checkpoint"
-        )
+        expected_sha = configured_foundation_checkpoint_sha(checkpoint)
         if not isinstance(checkpoint_name, str) or Path(checkpoint_name).name != checkpoint_name:
             raise FoodConfigurationError("Foundation selection manifest has invalid checkpoint filename")
         if selected_sha != expected_sha:
@@ -1039,7 +1048,7 @@ def _load_verified_foundation(config: Mapping[str, Any], *, device: str | torch.
         return embedder, manifest
     checkpoint_path = Path(_config_text(checkpoint, "path", label="config.checkpoint"))
     manifest_path = Path(_config_text(checkpoint, "manifest_path", label="config.checkpoint"))
-    expected_sha = _config_text(checkpoint, "expected_sha256", label="config.checkpoint")
+    expected_sha = configured_foundation_checkpoint_sha(checkpoint)
     _verify_sha256(checkpoint_path, expected_sha, label="Foundation checkpoint")
     embedder = load_foundation_checkpoint(checkpoint_path, manifest_path, map_location=device)
     return embedder, _read_json(manifest_path, label="Foundation checkpoint manifest")
@@ -1151,7 +1160,9 @@ def run_food_training(config: Mapping[str, Any]) -> dict[str, Any]:
         "run_id": run_dir.name,
         "seed": seed,
         "config_digest": _config_digest(config),
-        "selected_checkpoint_sha256": _config_text(config["checkpoint"], "expected_sha256", label="config.checkpoint"),
+        "selected_checkpoint_sha256": configured_foundation_checkpoint_sha(
+            _mapping(config["checkpoint"], label="config.checkpoint")
+        ),
         "vocabulary_sha256": _sha256(vocabulary_path),
         "foundation_checkpoint_identity": foundation_checkpoint_manifest,
         "train_request_count": len(_group_requests(rows["train"])),
@@ -1282,10 +1293,8 @@ def run_food_prediction(
         expected_manifest_sha256=expected_run_manifest_sha256,
         device=device,
     )
-    expected_foundation_checkpoint_sha = _config_text(
-        _mapping(config.get("checkpoint"), label="config.checkpoint"),
-        "expected_sha256",
-        label="config.checkpoint",
+    expected_foundation_checkpoint_sha = configured_foundation_checkpoint_sha(
+        _mapping(config.get("checkpoint"), label="config.checkpoint")
     )
     verify_food_prediction_identity(
         food_run_manifest=food_run_manifest,

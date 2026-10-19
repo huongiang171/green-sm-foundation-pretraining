@@ -484,6 +484,15 @@ def run_corpus(
             }
         )
         _atomic_json(trace_path, trace)
+        if completed_step == 1 or completed_step % 25 == 0 or completed_step == requested_steps:
+            print(
+                "Pretraining "
+                f"corpus={corpus} step={completed_step}/{requested_steps} "
+                f"total={float(loss.total.item()):.6f} "
+                f"next_action={float(getattr(loss, 'next_action', torch.tensor(0.0)).item()):.6f} "
+                f"next_semantic={float(getattr(loss, 'next_semantic', torch.tensor(0.0)).item()):.6f}",
+                flush=True,
+            )
         evaluate_now = (
             completed_step % config.training.eval_every_steps == 0
             or completed_step == requested_steps
@@ -504,6 +513,13 @@ def run_corpus(
                     "validation_next_action": float(validation.get("next_action", 0.0)),
                     "validation_next_semantic": float(validation.get("next_semantic", 0.0)),
                 }
+            )
+            print(
+                "Pretraining validation "
+                f"corpus={corpus} step={completed_step} total={validation_total:.6f} "
+                f"next_action={float(validation.get('next_action', 0.0)):.6f} "
+                f"next_semantic={float(validation.get('next_semantic', 0.0)):.6f}",
+                flush=True,
             )
             improved = best_validation is None or validation_total < best_validation
             if improved:
