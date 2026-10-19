@@ -7,6 +7,8 @@ venv/
 .pytest_cache/
 .pytest-tmp/
 .ruff_cache/
+.worktrees/
+.superpowers/
 
 # Environment and secrets
 .env
