@@ -110,6 +110,9 @@ def test_shared_signal_poc_validator_reports_category_mix_cold_rates_and_no_leak
 
     assert report["history_food_category_count"] == 12
     assert report["episode_mix"] == {"cross_service": 112, "same_service": 32, "noise": 16}
+    assert report["episode_mix_by_task_split"]["food"]["test"] == {
+        "cross_service": 14, "same_service": 4, "noise": 2,
+    }
     assert report["cold_request_rates"]["food"] == {
         "validation": pytest.approx(0.15),
         "test": pytest.approx(0.15),

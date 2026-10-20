@@ -1,9 +1,12 @@
 from __future__ import annotations
 
 import base64
+import ast
 import io
+import json
 import tarfile
 from pathlib import Path
+from pathlib import PurePosixPath
 
 import pytest
 
@@ -45,6 +48,27 @@ def test_extraction_rejects_path_traversal(tmp_path: Path) -> None:
 
     with pytest.raises(ValueError, match="unsafe archive member"):
         extract_shared_signal_poc(payload, tmp_path / "out")
+
+
+@pytest.mark.parametrize("task", ("food", "ads"))
+def test_downstream_notebook_extracts_checkpoint_with_directory_entries(tmp_path: Path, task: str) -> None:
+    source = tmp_path / "checkpoint"
+    source.mkdir()
+    (source / "checkpoint_manifest.json").write_text("{}", encoding="utf-8")
+    archive_path = tmp_path / "checkpoint.tar.gz"
+    with tarfile.open(archive_path, "w:gz") as archive:
+        archive.add(source, arcname=".")
+    notebook = json.loads(
+        (Path(__file__).parents[2] / "notebooks" / f"shared_signal_poc_{task}_kaggle.ipynb").read_text(encoding="utf-8")
+    )
+    source_code = "".join(notebook["cells"][2]["source"])
+    function = next(node for node in ast.parse(source_code).body if isinstance(node, ast.FunctionDef) and node.name == "extract_checkpoint")
+    namespace = {"tarfile": tarfile, "PurePosixPath": PurePosixPath}
+    exec(compile(ast.Module(body=[function], type_ignores=[]), "<notebook>", "exec"), namespace)
+
+    destination = tmp_path / "extracted"
+    namespace["extract_checkpoint"](archive_path, destination)
+    assert (destination / "checkpoint_manifest.json").read_text(encoding="utf-8") == "{}"
 
 
 @pytest.mark.parametrize(

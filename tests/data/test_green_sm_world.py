@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import replace
+from collections import Counter
 from pathlib import Path
 
 from src.data.green_sm.config import GreenSmConfig
@@ -78,3 +79,17 @@ def test_shared_signal_poc_world_has_private_affinity_and_balanced_episodes(tmp_
     assert "primary_food_category" not in repr(world.public_payload())
     first_request = world.food_requests[0]
     assert first_request.candidates != tuple(sorted(first_request.candidates, key=lambda value: value.candidate_id))
+
+
+def test_shared_signal_episode_mix_is_balanced_in_each_service_and_split(tmp_path: Path) -> None:
+    base = GreenSmConfig.from_json("configs/green_sm_shared_signal_poc.json")
+    config = replace(base, output_root=tmp_path / "out", user_count=96,
+                     snapshot_counts={"train": 80, "validation": 40, "test": 40},
+                     food_request_counts={"train": 40, "validation": 20, "test": 20},
+                     ads_request_counts={"train": 40, "validation": 20, "test": 20})
+    world = build_target_world(config)
+    for requests in (world.food_requests, world.ads_requests):
+        for split, count in (("train", 40), ("validation", 20), ("test", 20)):
+            mix = Counter(world.episode_for(row.request_id).kind for row in requests if row.split == split)
+            assert mix == {"cross_service": round(count * .7), "same_service": round(count * .2),
+                           "noise": count - round(count * .7) - round(count * .2)}

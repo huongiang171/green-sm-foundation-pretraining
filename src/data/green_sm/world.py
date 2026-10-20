@@ -666,16 +666,18 @@ def build_target_world(config: GreenSmConfig) -> TargetWorld:
     episodes: dict[str, RequestEpisode] = {}
     if config.behavior_policy == "shared_signal_poc_v1":
         for requests, direction in ((food_requests, "ads_to_food"), (ads_requests, "food_to_ads")):
-            count = len(requests)
-            cross_count = round(count * 0.70)
-            same_count = round(count * 0.20)
-            for index, request in enumerate(requests):
-                kind = "cross_service" if index < cross_count else "same_service" if index < cross_count + same_count else "noise"
-                episodes[request.request_id] = RequestEpisode(
-                    kind=kind,
-                    direction=direction if kind == "cross_service" else request.service.lower(),
-                    source_record_id=f"episode:{request.request_id}",
-                )
+            for split in ("train", "validation", "test"):
+                split_requests = [request for request in requests if request.split == split]
+                _rng(config.seed, "episode-mix", direction, split).shuffle(split_requests)
+                cross_count = round(len(split_requests) * 0.70)
+                same_count = round(len(split_requests) * 0.20)
+                for index, request in enumerate(split_requests):
+                    kind = "cross_service" if index < cross_count else "same_service" if index < cross_count + same_count else "noise"
+                    episodes[request.request_id] = RequestEpisode(
+                        kind=kind,
+                        direction=direction if kind == "cross_service" else request.service.lower(),
+                        source_record_id=f"episode:{request.request_id}",
+                    )
     return TargetWorld(
         catalogue=catalogue,
         users=users,

@@ -279,9 +279,25 @@ def _shared_signal_poc_report(
     }
     if episode_mix != expected:
         raise ValueError("shared-signal PoC episode mixture differs from 70/20/10")
+    episode_mix_by_task_split: dict[str, dict[str, dict[str, int]]] = {}
+    for task, requests in (("food", world.food_requests), ("ads", world.ads_requests)):
+        episode_mix_by_task_split[task] = {}
+        for split in ("train", "validation", "test"):
+            split_requests = [request for request in requests if request.split == split]
+            count = len(split_requests)
+            cross, same = round(count * 0.70), round(count * 0.20)
+            expected_split = {"cross_service": cross, "same_service": same, "noise": count - cross - same}
+            actual = {
+                kind: sum(world.episode_for(request.request_id).kind == kind for request in split_requests)
+                for kind in expected_split
+            }
+            if actual != expected_split:
+                raise ValueError(f"{task} {split} episode mixture differs from 70/20/10")
+            episode_mix_by_task_split[task][split] = actual
     return {
         "history_food_category_count": len(history_categories),
         "episode_mix": episode_mix,
+        "episode_mix_by_task_split": episode_mix_by_task_split,
         "episode_directions": world.episode_direction_counts(),
         "cold_request_rates": {
             "food": cold_rates(food_rows, "food"),
