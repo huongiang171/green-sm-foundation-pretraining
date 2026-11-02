@@ -31,10 +31,6 @@ python -m pytest
 Dataset, checkpoint, model weight và experiment artifact lớn không được commit vào
 Git. Xem [data/README.md](data/README.md) và [docs/data_schema.md](docs/data_schema.md).
 
-## Làm việc nhóm
-
-Xem [CONTRIBUTING.md](CONTRIBUTING.md) trước khi tạo branch hoặc Pull Request.
-
 ## Downstream evaluation
 
 Evaluate completed label-free Food or Ads predictions on the linked Green SM corpus without a GPU:
